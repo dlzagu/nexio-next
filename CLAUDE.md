@@ -98,6 +98,8 @@ DB 교체 시 수정 대상은 `src/lib/db.ts` 하나다. 쓰기는 `ALLOW_DEV_W
 
 - **진행 상태**: `docs/progress/nexio-mvp.json` ← 세션 시작 시 필수
 - **전환 결정**: `docs/decisions/ADR-0004`(사이드 프로젝트·SQLite·가상 시드) ← 현행 정본
+- **배포·CI/CD**: `docs/decisions/ADR-0005` — 라이브 https://nexio-next.vercel.app ·
+  배포 환경에서만 드러난 함정 3종(lock·jsdom·타임존)의 원인과 대응
 - 요구사항: `docs/PRD.md` · 구조·환경변수: `docs/ARCHITECTURE.md`
 - API 계약: `docs/inventory/api-map.md` · 타입: `docs/design/types-spec.md`
 - 실데이터 근거: `docs/inventory/data-profile.md` ← "무엇을 안 만들어도 되는가"의 출처
