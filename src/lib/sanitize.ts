@@ -1,4 +1,4 @@
-import DOMPurify from "isomorphic-dompurify";
+import { FilterXSS } from "xss";
 import { decodeEntities } from "./format";
 
 /**
@@ -65,6 +65,20 @@ function unescapeStoredMarkup(raw: string): string {
 }
 
 /**
+ * 🔴 DOM 없이 도는 순수 파서(xss)를 쓴다 — DOMPurify 계열은 서버에서 jsdom 을 요구하고,
+ *    jsdom 의 동적 require 가 서버리스 번들에 안 딸려와 SSR 이 통째로 죽었다
+ *    (Vercel 배포 실측: RichText 를 가진 /requests·/styleguide 만 500).
+ *    새니타이즈는 클라이언트·SSR 양쪽에서 도는 코드라 DOM 의존이 없어야 한다.
+ */
+const filter = new FilterXSS({
+  whiteList: Object.fromEntries(ALLOWED_TAGS.map((t) => [t, ALLOWED_ATTR])),
+  // 허용 목록 밖 태그는 이스케이프가 아니라 제거한다 (글자로 남으면 안 된다)
+  stripIgnoreTag: true,
+  // 스크립트·스타일은 태그뿐 아니라 본문까지 지운다
+  stripIgnoreTagBody: ["script", "style"],
+});
+
+/**
  * 기존 2.3만 건이 HTML(summernote 산출물)로 저장돼 있다.
  * 그대로 렌더하면 XSS 노출면이 된다 → 렌더 경로는 전부 이 함수를 지난다.
  *
@@ -72,12 +86,7 @@ function unescapeStoredMarkup(raw: string): string {
  * 그대로 들이면 디자인 시스템이 무력화되므로 의도한 동작이다.
  */
 export function sanitize(raw: string | null | undefined): SafeHtml {
-  const cleaned = DOMPurify.sanitize(unescapeStoredMarkup(raw ?? ""), {
-    ALLOWED_TAGS,
-    ALLOWED_ATTR,
-    ADD_ATTR: ["target"],
-  });
-  return cleaned as SafeHtml;
+  return filter.process(unescapeStoredMarkup(raw ?? "")) as SafeHtml;
 }
 
 export function isBlankHtml(html: string | null | undefined): boolean {
