@@ -85,7 +85,9 @@
             "권한 축 11개가 JSP 전역에 흩어짐 → 재설계 시 canDo(action,ticket,user) 단일 함수로 통합 필요. 원본이 '기본 숨김→조건시 show' 구조라 이미 fail-closed — 이 성질 유지할 것",
             "원본 이상징후 5건 기록(세미콜론 누락 L5556, console.log 잔존, CTX 누락, 3중 상태표현) — 원본 수정 금지, 이식 시 재현만 하지 말 것"
           ],
-          "verify": ["P2 재설계 입력 6개 항목이 문서 §6 에 정리됨"]
+          "verify": [
+            "P2 재설계 입력 6개 항목이 문서 §6 에 정리됨"
+          ]
         },
         {
           "id": "s4",
@@ -129,7 +131,9 @@
             "데이터 품질: REQDATE 과거이상치 1,252건(1900-01-01 = 구시스템 이관분 날짜누락) / 미래이상치 3건(최대 2105년) → 신청화면에 날짜 상한 검증 추가",
             "분류코드 정본 확보 — B1GUBUN1 분야9 / B1GUBUN2 모듈26 / B1GUBUN3 요청유형8"
           ],
-          "verify": ["data-profile.md §7 에 재현 SQL 3개 기록"]
+          "verify": [
+            "data-profile.md §7 에 재현 SQL 3개 기록"
+          ]
         },
         {
           "id": "s7",
@@ -158,7 +162,9 @@
       "id": "P2",
       "name": "UX 재설계 (정보 구조)",
       "status": "done",
-      "depends_on": ["P1"],
+      "depends_on": [
+        "P1"
+      ],
       "description": "6,611줄 한 화면을 단계/탭/모달로 분해. 디자인 시스템보다 먼저 — 색·폰트로는 이 문제가 안 고쳐진다.",
       "steps": [
         {
@@ -218,7 +224,9 @@
       "id": "P3",
       "name": "디자인 시스템 구축",
       "status": "done",
-      "depends_on": ["P2"],
+      "depends_on": [
+        "P2"
+      ],
       "note": "사용자가 별도 디자인 세션에서 진행 중. 산출물(design-system.md / styleguide.html / tokens.css)을 docs/design/ 에 받으면 P2 문서와 대조해 누락 컴포넌트를 잡는다. 필수 확인: Sheet · Stepper · Tabs · Table · 토큰입력 5종.",
       "steps": [
         {
@@ -257,7 +265,9 @@
       "id": "P4",
       "name": "하네스 세팅 (harness-init, 새 세션)",
       "status": "done",
-      "depends_on": ["P2"],
+      "depends_on": [
+        "P2"
+      ],
       "note": "2026-07-30 의존성 완화 — 당초 P3(디자인시스템) 의존으로 잡았으나 과했다. 하네스는 CLAUDE.md·디렉토리·권한·검증장치를 만드는 단계라 디자인 산출물이 필요 없다. 오히려 프로젝트 뼈대가 먼저 있어야 tokens.css 를 놓을 자리가 생기므로 P3 보다 먼저 하는 게 자연스럽다.",
       "steps": [
         {
@@ -299,7 +309,9 @@
       "id": "P5",
       "name": "뼈대 + 디자인 시스템 코드화",
       "status": "done",
-      "depends_on": ["P4"],
+      "depends_on": [
+        "P4"
+      ],
       "note": "2026-07-30 사용자 지시로 P5·P6 를 한 세션에 자율 진행. '개발 스키마를 일단 사용' + 'UI/UX 가 가장 중요' → 개발 DB 직접 조회 어댑터를 만들고 실데이터로 3화면을 구현했다. 상세 결정: docs/decisions/ADR-0002 · ADR-0003",
       "steps": [
         {
@@ -338,7 +350,9 @@
             "route handler: /api/session(개발 역할전환) · /api/tickets/[echoNum] · /api/tickets/[echoNum]/action · /api/diag(자기진단)",
             "액션 라우트는 클라이언트가 보낸 상태를 믿지 않고 서버에서 티켓을 다시 읽어 canDo() 재판정. 쓰기는 ALLOW_DEV_WRITES=false 로 차단(202)"
           ],
-          "verify": ["/api/diag 8개 항목 전부 ok (db·user·list.open·list.all·detail·meta·dashboard)"]
+          "verify": [
+            "/api/diag 8개 항목 전부 ok (db·user·list.open·list.all·detail·meta·dashboard)"
+          ]
         },
         {
           "id": "s4",
@@ -349,7 +363,10 @@
             "정적 아티팩트(docs/design/styleguide.html)와 달리 실제 코드가 그리는 결과를 보여주는 살아있는 스타일가이드",
             "색·타이포·상태배지 12종·Stepper·버튼·입력·Combobox·TokenInput·Sheet·Modal·Tabs·테이블·빈상태·리치텍스트·스켈레톤 수록"
           ],
-          "verify": ["/styleguide 콘솔 에러 0, 토큰 반영 확인", "테마·밀도 전환 시 전 요소가 함께 변함"]
+          "verify": [
+            "/styleguide 콘솔 에러 0, 토큰 반영 확인",
+            "테마·밀도 전환 시 전 요소가 함께 변함"
+          ]
         }
       ]
     },
@@ -357,7 +374,9 @@
       "id": "P6",
       "name": "MVP 화면 구현",
       "status": "in_progress",
-      "depends_on": ["P5"],
+      "depends_on": [
+        "P5"
+      ],
       "description": "대시보드 → 조회 → 신청 순서. 읽기 경로는 3화면 모두 실데이터로 완성. 쓰기 경로(저장·액션·댓글)는 s4 로 분리.",
       "steps": [
         {
@@ -413,7 +432,9 @@
             "참조자 3중 UI → 토큰 입력 하나. 검증은 토큰 추가 시점",
             "희망완료일 상한 2년(미래 이상치 2105년 재발 방지). 계약시간 스트립은 SHOWYN='N' 이면 영역 자체 미렌더"
           ],
-          "verify": ["/requests/new 렌더 · 필수 7개 안내 · 콘솔 에러 0"]
+          "verify": [
+            "/requests/new 렌더 · 필수 7개 안내 · 콘솔 에러 0"
+          ]
         },
         {
           "id": "s4",
@@ -449,8 +470,10 @@
     {
       "id": "P7",
       "name": "사이드 프로젝트 전환 — 자체 DB + 배포 준비",
-      "status": "in_progress",
-      "depends_on": ["P6"],
+      "status": "done",
+      "depends_on": [
+        "P6"
+      ],
       "description": "2026-08-14 사용자 결정: 실서비스가 아니라 '사내에서 이런 걸 만들었다' 쇼케이스. 회사 DB 연결 폐기 → SQLite + 가상 시드, Vercel 배포 + GitHub Actions CI.",
       "steps": [
         {
@@ -491,6 +514,12 @@
             "검증: 실명 24종 전체 패턴 grep = 0건 (gitignore 파일 제외)",
             "🔴 git 이력 초기화는 사용자 실행 대기 — 과거 커밋에 치환 전 내용이 남아 있으므로 공개 push 는 반드시 orphan 새 이력으로"
           ]
+        },
+        {
+          "id": "s4",
+          "title": "공개 배포 + CI/CD 자동화",
+          "status": "done",
+          "detail": "GitHub public repo(dlzagu/nexio-next) + Vercel Git 연동(main push→프로덕션, PR→프리뷰). 라이브 https://nexio-next.vercel.app — 12개 경로 전수 200, 콘솔 에러 0. 배포 환경에서만 드러난 함정 3종 해결: ①Windows lock↔Linux npm ci(npm run lock:fix) ②isomorphic-dompurify→jsdom 서버리스 번들 누락으로 SSR 500(→xss 로 교체) ③벽시계 시각을 절대시각화해 서버/브라우저 날짜 하루 차이(→toWallClockIso, 회귀 테스트 4개). 정본 = docs/decisions/ADR-0005."
         }
       ]
     }
@@ -516,7 +545,7 @@
   ],
   "session_continuation": {
     "next_step": "P6.s4",
-    "note": "🔄 사이드 프로젝트 전환 + 익명화 완료(P7 전체 done — ADR-0004). SQLite+가상 시드로 3화면 동작, CI/README/배포 준비 완료, verify 71개 green, repo 내 실명 0건(grep 검증). 남은 것: ① 사용자 실행 — git orphan 새 이력 생성 → GitHub push → Vercel 연결 (과거 이력 공개 금지) ② P6.s4 쓰기 경로(자체 DB UPDATE+이력 로그) ③ P6.s5 Tiptap. 검증: npm run verify(71개) · npm run build · /api/diag.",
+    "note": "✅ 공개 배포·CI/CD 완료(P7 done — ADR-0005). 라이브 https://nexio-next.vercel.app · CI green(verify 75개 + format + build) · Vercel Git 연동으로 push 마다 자동 배포. 브랜치: 공개 main / 익명화 전 이력은 로컬 private-history (⛔ push 금지). 남은 것: ① P6.s4 쓰기 경로(자체 DB UPDATE + 이력 로그) ② P6.s5 Tiptap ③ P1.s7. ⚠️ 의존성 변경 후엔 npm run lock:fix 를 돌려야 CI 가 통과한다. 검증: npm run verify(75개) · npm run build · /api/diag.",
     "compact_after_each_step": true
   }
 }
