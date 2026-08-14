@@ -9,6 +9,29 @@ import { ko } from "date-fns/locale";
 const MIN_DATE = new Date("2015-01-01");
 const MAX_DATE = new Date(new Date().getFullYear() + 2, 11, 31);
 
+/**
+ * 🔴 저장값은 타임존이 없는 **벽시계 시각**이다 ('YYYY-MM-DD HH:MM:SS').
+ *    이걸 절대시각(UTC)으로 바꿔 내보내면 서버와 브라우저의 타임존이 다를 때
+ *    서로 다른 날짜를 그려 하이드레이션이 깨진다
+ *    (Vercel 실측: 서버 UTC 는 08-12, 브라우저 KST 는 08-13 — 하루 차이).
+ *
+ * → 타임존 표기를 붙이지 않은 채 넘긴다. 양쪽이 각자 로컬로 해석하지만
+ *   변환이 없으니 화면에 찍히는 숫자는 동일하다.
+ */
+export function toWallClockIso(
+  input: string | Date | null | undefined,
+): string | null {
+  if (!input) return null;
+  if (input instanceof Date) {
+    if (!isValid(input)) return null;
+    return format(input, "yyyy-MM-dd'T'HH:mm:ss");
+  }
+  const s = input.trim();
+  if (!s) return null;
+  // 'YYYY-MM-DD HH:MM:SS' → 'YYYY-MM-DDTHH:MM:SS' (Z·오프셋은 붙이지 않는다)
+  return s.replace(" ", "T").replace(/(?:Z|[+-]\d\d:?\d\d)$/, "");
+}
+
 export function toValidDate(
   input: string | Date | null | undefined,
 ): Date | null {

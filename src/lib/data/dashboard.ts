@@ -1,5 +1,6 @@
 import { PROGRESS, progressLabel } from "../codes";
 import { select, type Param } from "../db";
+import { toWallClockIso } from "../format";
 import type { DashboardData, TicketFilters, User } from "../types";
 import { listTickets, scopeClause } from "./tickets";
 
@@ -261,7 +262,7 @@ export async function getDashboard(user: User): Promise<DashboardData> {
       id: String(r.NTT_ID),
       title: (r.NTT_SJ ?? "").trim() || "(제목 없음)",
       author: (r.NTCR_NM ?? "").trim(),
-      at: r.REG_DT ? new Date(r.REG_DT).toISOString() : null,
+      at: toWallClockIso(r.REG_DT),
     }));
   };
 

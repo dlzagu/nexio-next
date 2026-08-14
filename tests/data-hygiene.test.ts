@@ -12,6 +12,7 @@ import {
   fmtDate,
   plainPreview,
   toValidDate,
+  toWallClockIso,
 } from "@/lib/format";
 import { isBlankHtml, sanitize } from "@/lib/sanitize";
 
@@ -120,6 +121,34 @@ describe("sanitize — 기존 HTML 2.3만 건을 렌더하기 전에", () => {
     expect(out).toContain("원인");
     expect(out).not.toContain("ok-block");
     expect(out).not.toContain("1d3057");
+  });
+});
+
+describe("toWallClockIso — 서버·브라우저 타임존이 달라도 같은 날짜를 그린다", () => {
+  // 회귀: Vercel 배포에서 서버(UTC)는 08-12, 브라우저(KST)는 08-13 을 그려
+  // 하이드레이션이 깨졌다. 원인 = 벽시계 시각을 toISOString() 으로 절대시각화.
+  it("타임존 표기를 붙이지 않는다 — 붙으면 보는 곳마다 날짜가 달라진다", () => {
+    const out = toWallClockIso("2026-08-12 20:00:00");
+    expect(out).toBe("2026-08-12T20:00:00");
+    expect(out).not.toMatch(/(?:Z|[+-]\d\d:?\d\d)$/);
+  });
+
+  it("저녁 시각도 날짜가 밀리지 않는다 (UTC 변환이면 하루 밀린다)", () => {
+    expect(fmtDate(toWallClockIso("2026-08-12 23:30:00"))).toBe("2026-08-12");
+    expect(fmtDate(toWallClockIso("2026-08-12 00:30:00"))).toBe("2026-08-12");
+  });
+
+  it("이미 타임존이 붙어 온 값은 표기를 떼어 벽시계로 통일한다", () => {
+    expect(toWallClockIso("2026-08-12T20:00:00Z")).toBe("2026-08-12T20:00:00");
+    expect(toWallClockIso("2026-08-12T20:00:00+09:00")).toBe(
+      "2026-08-12T20:00:00",
+    );
+  });
+
+  it("빈 값은 null — 화면에서 '-' 로 떨어진다", () => {
+    expect(toWallClockIso(null)).toBeNull();
+    expect(toWallClockIso("")).toBeNull();
+    expect(toWallClockIso("   ")).toBeNull();
   });
 });
 

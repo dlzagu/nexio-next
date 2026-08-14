@@ -1,5 +1,5 @@
 import { PRIORITY, MODULE, labelOf, type ProgressCode } from "../codes";
-import { decodeEntities, plainPreview } from "../format";
+import { decodeEntities, plainPreview, toWallClockIso } from "../format";
 import { select, type Param } from "../db";
 import type {
   Comment,
@@ -54,9 +54,9 @@ interface RawRow {
   lastSeenCommentId: number | null;
 }
 
-// SQLite 는 날짜를 TEXT('YYYY-MM-DD HH:MM:SS')로 저장한다 → ISO 문자열로 정규화
-const iso = (d: string | Date | null | undefined) =>
-  d ? new Date(d).toISOString() : null;
+// SQLite 는 날짜를 TEXT('YYYY-MM-DD HH:MM:SS')로 저장한다 → 벽시계 ISO 로 정규화.
+// ⚠️ toISOString() 으로 절대시각화하면 안 된다 — toWallClockIso 주석 참조
+const iso = toWallClockIso;
 const trim = (s: string | null | undefined) => (s ?? "").trim();
 
 function toRow(r: RawRow): TicketRow {
