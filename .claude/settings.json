@@ -50,6 +50,16 @@
             "command": "sh \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format-edited-file.sh\""
           }
         ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PROJECT_DIR}/.claude/hooks/sync-lock-after-npm.sh\"",
+            "statusMessage": "package-lock 보정 확인"
+          }
+        ]
       }
     ]
   }
