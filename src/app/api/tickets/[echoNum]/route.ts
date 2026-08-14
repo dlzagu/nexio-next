@@ -1,0 +1,38 @@
+import { NextResponse } from "next/server";
+import { getTicket } from "@/lib/data/tickets";
+import {
+  availableActions,
+  canDo,
+  cancelHint,
+  editSolutionHint,
+} from "@/lib/permissions";
+import { currentUser, loadCustomerConfig } from "@/lib/session";
+
+export async function GET(
+  _req: Request,
+  ctx: { params: Promise<{ echoNum: string }> },
+) {
+  const { echoNum } = await ctx.params;
+  const user = await currentUser();
+  if (!user) return NextResponse.json({ code: "NO_SESSION" }, { status: 401 });
+
+  const ticket = await getTicket(decodeURIComponent(echoNum), user);
+  // 가시성 밖의 건은 "없음"으로 응답한다 — 존재 여부를 흘리지 않는다
+  if (!ticket) return NextResponse.json({ code: "NOT_FOUND" }, { status: 404 });
+
+  const config = await loadCustomerConfig(ticket.custCode);
+  return NextResponse.json({
+    ticket,
+    config,
+    actions: availableActions(ticket, user, config),
+    cancelHint: cancelHint(ticket, user),
+    // 액션바는 최대 3개만 노출하므로, 화면이 편집 UI 를 켤지 판단할 플래그를 따로 내린다.
+    // 판정은 같은 canDo() 한 곳을 거친다 (fail-closed).
+    can: {
+      editSolution: canDo("save", ticket, user, config),
+      comment: canDo("comment", ticket, user, config),
+      // 편집 UI 가 조용히 사라지지 않게, 막힌 이유를 함께 내린다
+      editSolutionReason: editSolutionHint(ticket, user, config),
+    },
+  });
+}

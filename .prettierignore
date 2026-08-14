@@ -1,0 +1,19 @@
+node_modules/
+.next/
+out/
+build/
+coverage/
+
+# AI 스크래치 — 진실 아님
+.dev/
+
+# 문서는 포맷 대상이 아니다.
+# ① 한글은 표시폭이 2인데 prettier 는 문자 수로 표를 정렬해 오히려 어긋난다
+# ② tokens.css·styleguide.html 은 디자인 시스템 아티팩트 = 손으로 고치지 않는다 (CLAUDE.md 컨벤션)
+# ③ progress JSON 은 진행 추적 규약이 관리한다
+# → prettier 는 코드(ts/tsx/css/json)만 담당한다
+docs/
+**/*.md
+
+# 디자인 시스템 아티팩트의 원문 복사본 — 정본은 docs/design/tokens.css, 텍스트를 바꾸지 않는다
+src/app/tokens.css

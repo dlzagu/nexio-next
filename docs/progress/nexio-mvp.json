@@ -1,0 +1,522 @@
+﻿{
+  "project": "넥시오 벤더포털 Next.js 재구축 — 포트폴리오 사이드 프로젝트 (2026-08-14 전환)",
+  "ticket": "",
+  "created_at": "2026-07-30",
+  "last_updated": "2026-08-14",
+  "scope": "MVP 3화면(조회/신청/대시보드) Next.js 재구축. 🔄 2026-08-14 사용자 결정으로 사이드 프로젝트 전환 — 회사 DB 연결 폐기, 자체 SQLite + 가상 시드, Vercel 배포 + CI/CD. 상세: ADR-0004",
+  "owner": "원본 벤더포털 (사내 시스템)",
+  "spec_doc": "docs/inventory/api-map.md",
+  "estimate_md": 0,
+  "design_decisions": {
+    "백엔드": "Spring MVC 를 API 로 유지 — @ResponseBody 291개소가 이미 있고, MSSQL+HANA 이중접속·SAP Service Layer·Spring Security 권한체계를 재구현하면 MVP 범위를 벗어난다. Next.js 는 화면 + BFF 만.",
+    "인증": "⚠️2026-07-30 정정 — 당초 'JWT 기반'이라 가정했으나 소스 확인 결과 틀렸다(config/security-context.xml). 실제는 form-login + 세션쿠키(PORTALSESSIONID) 기반이고, JWT 는 MobileController·MemberService 두 곳뿐인 모바일 전용이다. → BFF 는 사용자의 세션 쿠키를 그대로 전달한다. 🔴 BFF 가 자체 세션을 새로 만들면 안 된다 — max-sessions=1 이라 사용자의 브라우저 세션이 만료된다. 상세: docs/inventory/api-map.md §5",
+    "스택": "Next.js App Router + TypeScript + Tailwind + shadcn/ui. 라이브러리 선정 근거는 docs/design/tech-stack.md — 필수 5(@tanstack/react-table 정렬, @tiptap/react 리치텍스트, isomorphic-dompurify XSS, @tanstack/react-query 서버상태, react-hook-form+zod 검증) + 권장 5(nuqs, recharts, date-fns, sonner, cmdk).",
+    "정렬_구현": "서버가 정렬을 지원하지 않고(EcoLineSearchVO 에 정렬 파라미터 없음) Spring 은 수정 안 하므로, 뷰를 나눠 처리한다. 진행중/내요청(270건)=전체를 한 번에 받아 클라이언트 정렬(전 컬럼 즉시). 전체검색(23,694건)=서버 페이징 + 페이지 내 정렬만, 한계를 UI 에 명시. 상세: docs/design/tech-stack.md §1",
+    "리치텍스트": "Tiptap 채택. 이유 ①저장포맷 HTML 이라 기존 2.3만건과 호환 ②붙여넣기 핸들러로 '외부 이미지 차단' 가드를 붙여넣기 시점에 즉시 구현 가능(원본 summernote 는 저장 버튼 누른 뒤에야 경고) ③React 네이티브. 기존 HTML 렌더 시 DOMPurify 새니타이즈는 선택이 아니라 필수.",
+    "순서": "인벤토리 → UX재설계 → 디자인시스템 → 하네스 → 구현. 디자인 시스템을 먼저 만들면 실제 화면(조회 input 69개)과 안 맞아 버려진다.",
+    "구현순서": "대시보드 → 조회 → 신청 (2026-07-30 P1 실측 후 변경, 사용자 승인). 대시보드=완전 읽기전용·GET 14개·쓰기 없음 → 디자인시스템 첫 검증 무대로 리스크 최저. 조회=상태 12 × 버튼 25종 × 권한축 11개로 최난도이나 최다 사용이라 두 번째. 신청=입력 20개뿐이라 마지막에 빠르게 마감. (당초 조회→대시보드→신청이었으나, 실측 결과 조회가 가장 무겁고 신청이 가장 가벼운 것으로 확인되어 뒤집음)",
+    "원본_격리": "원본 repo 는 SVN + 커밋금지 규칙이 걸려 있어 물리적으로 분리된 C:\\Users\\User\\Desktop\\nexio-next 에서 작업한다. 원본은 읽기 전용."
+  },
+  "user_policies": {
+    "원본_수정": "차단 — <원본repo> 은 읽기 전용. 파일 수정·커밋 금지.",
+    "MVP_범위": "강제 — 대시보드/신청/조회 3화면만. ST003(선급금정산)·ST004(Cross charge)는 범위 밖.",
+    "디자인_방향": "강제 — 애플/테슬라/토스 계열의 미니멀·직관·세련됨. 현재의 '한 화면에 전부 세로로 나열' 구조를 팝업/단계/패널로 분해하는 것이 핵심 목표.",
+    "다국어": "차단 — MVP 는 **한국어 전용**(2026-07-30 사용자 확정). 원본의 stLanguText() 다국어 래퍼는 이식하지 않는다. next-intl 등 i18n 라이브러리 도입 금지. ⚠️ 나중에 다국어가 필요해지면 전 화면을 다시 훑어야 한다는 비용을 알고 내린 결정이다 — 요구가 생기면 별건 프로젝트로 다룬다.",
+    "취소_권한": "차단 — 요청 취소의 실행 주체는 '신청자 본인'만이다(회사 정책, 2026-07-30 사용자 확정). 담당자에게 취소 권한을 부여하는 설계는 폐기. 대신 담당자는 '취소 권유'만 보내고 실행 버튼은 신청자 화면에만 둔다 → 코멘트 4회 왕복을 알림1+클릭1로 축소하되 정책은 유지. 상세: docs/design/redesign-ST001-조회.md §3"
+  },
+  "ref_files": {
+    "api_map": "docs/inventory/api-map.md",
+    "schema": "docs/inventory/schema.md",
+    "원본_VO": "<원본repo>\\src\\main\\java\\com\\example\\portal\\portal\\model\\",
+    "원본_조회화면": "<원본repo>\\src\\main\\webapp\\WEB-INF\\views\\c4web\\ST001.jsp",
+    "원본_신청화면": "<원본repo>\\src\\main\\webapp\\WEB-INF\\views\\c4web\\ST002.jsp",
+    "원본_대시보드": "<원본repo>\\src\\main\\webapp\\WEB-INF\\views\\views\\ndashboard.jsp",
+    "원본_조회신청API": "<원본repo>\\src\\main\\java\\com\\example\\portal\\controller\\portal\\EcoLineController.java",
+    "원본_대시보드API": "<원본repo>\\src\\main\\java\\com\\example\\portal\\controller\\vendor\\DashController.java",
+    "원본_화면라우팅": "<원본repo>\\src\\main\\java\\com\\example\\portal\\controller\\c4web\\GetData20Controller.java"
+  },
+  "session_start_checklist": [
+    "1. 본 progress JSON Read → session_continuation.next_step 확인",
+    "2. docs/inventory/api-map.md Read (프론트-백엔드 계약서)",
+    "3. 원본은 읽기 전용 — 절대 수정·커밋하지 않는다",
+    "4. ⚠️ SAP B1 애드온 작업이 아니다 — b1-cookbook 불필요"
+  ],
+  "phases": [
+    {
+      "id": "P1",
+      "name": "화면 인벤토리 (읽기 전용)",
+      "status": "in_progress",
+      "depends_on": [],
+      "description": "MVP 3화면의 필드·액션·API·권한분기를 표로 추출. 디자인 시스템의 컴포넌트 목록이 여기서 나온다.",
+      "steps": [
+        {
+          "id": "s1",
+          "name": "API 맵 작성 — 3화면이 호출하는 전체 엔드포인트",
+          "status": "done",
+          "file": "docs/inventory/api-map.md",
+          "logic": [
+            "화면 ID 확정: ST001=서비스조회, ST002=서비스신청, ndashboard=대시보드",
+            "데이터 통로 2갈래 확인 — MVP 는 REST JSON 만, getData20 게이트웨이는 범위 밖",
+            "조회 16개 / 신청 11개 / 대시보드 14개 엔드포인트 식별"
+          ]
+        },
+        {
+          "id": "s2",
+          "name": "VO 스키마 추출 — EcoLineSearchVO/RequestVO/UpdateVO 필드 정의",
+          "status": "done",
+          "file": "docs/inventory/schema.md",
+          "logic": [
+            "EcoLineRequestVO = 102필드. 티켓 전 생애주기(신청→승인→처리→테스트이관→시스템이관)를 단일 객체에 담았고, 현 화면은 이걸 한 페이지에 전부 펼침 → 6,611줄의 직접 원인",
+            "102필드가 이미 워크플로 단계별로 뭉쳐 있음(A~Q 17그룹) → 그 경계가 곧 화면 분해선",
+            "신청 시 고객이 실제 채우는 건 B+C+D+E = 27필드뿐. 나머지 75는 처리 중 시스템/엔지니어가 채움",
+            "EcoLineAddInfoVO 의 showYn/confYn/testYn/systemYn = 고객사별 기능 토글 → 이관 14필드는 고객사에 따라 아예 없는 단계",
+            "검색조건은 13필드뿐인데 화면 input 은 69개 → 목록 화면에 상세 편집 컨트롤이 얹혀 있다는 신호"
+          ]
+        },
+        {
+          "id": "s3",
+          "name": "조회(ST001) 화면 인벤토리 — 상태머신·버튼·권한축",
+          "status": "done",
+          "file": "docs/inventory/ST001-조회.md",
+          "logic": [
+            "화면 구조 = 마스터-디테일이 한 페이지에 눌림. 행 선택 시 같은 페이지 아래로 상세가 펼쳐짐(selectedRow 전역) — 모달/라우팅/사이드패널 전무",
+            "progress 1~12 상태머신 역산 완료. 종료상태=['9','11','12'](ST001.jsp:3082). 4(제안)에서 고객사 설정(testYn/systemYn)에 따라 워크플로 길이가 갈림",
+            "버튼 시스템이 2개 공존 — 상단 applyTopButtonsByRow(고객측 7종) + 하단 applyProgressUI/showButtons(엔지니어측 8종). 총 25종 식별",
+            "권한 축 11개가 JSP 전역에 흩어짐 → 재설계 시 canDo(action,ticket,user) 단일 함수로 통합 필요. 원본이 '기본 숨김→조건시 show' 구조라 이미 fail-closed — 이 성질 유지할 것",
+            "원본 이상징후 5건 기록(세미콜론 누락 L5556, console.log 잔존, CTX 누락, 3중 상태표현) — 원본 수정 금지, 이식 시 재현만 하지 말 것"
+          ],
+          "verify": ["P2 재설계 입력 6개 항목이 문서 §6 에 정리됨"]
+        },
+        {
+          "id": "s4",
+          "name": "신청(ST002) 화면 인벤토리 — 입력 20개·검증체인·첨부",
+          "status": "done",
+          "file": "docs/inventory/ST002-신청.md",
+          "logic": [
+            "실측 입력 20개·버튼 4개·모달 0 — 3화면 중 가장 단순(조회의 39% 분량). 추정 27필드보다 적었음",
+            "저장 검증이 순차 alert 8단계 — 8번 걸리면 8번 눌러야 함. 인라인 검증으로 교체 대상",
+            "계약시간 3종(monthTime/remainTime/inProgressTime)은 disabled 표시 전용인데 입력칸 모양 → 정보 컴포넌트로 분리",
+            "첨부 경로가 조회(OK_UPLOAD_URL)와 신청(/Mobile/uploadFile)이 서로 다름 — s6 확인 대상",
+            "재신청(reReqYn/pEchoNum)으로 조회 화면 btnReapply 와 연결됨 → 라우팅 설계에 반영"
+          ]
+        },
+        {
+          "id": "s5",
+          "name": "대시보드 인벤토리 — 위젯 14종과 API 대응",
+          "status": "done",
+          "file": "docs/inventory/ndashboard-대시보드.md",
+          "logic": [
+            "GET 14개 전부 JSON·쓰기 동작 없음·필터 6개·Chart.js 캔버스 3개 → 이식 난이도 최저, 디자인시스템 첫 검증 무대로 최적",
+            "테넌트 격리가 서버측 구현됨 — effectiveCustCode()가 외부사용자의 custCode 를 본인 회사로 강제 override, restrictPrivate()는 u==null 이면 제한(fail-closed) → BFF 는 프록시만, 권한 재구현 금지",
+            "UserType 정본 확인(Const.java:58~62): B0001_01=내부(운영팀) / B0001_02=고객사용자(이름은 EXTERNAL 이지만 고객사 직원) / B0001_03=외부업체. TS 이식 시 INTERNAL/CUSTOMER/VENDOR 로 개명 권장",
+            "recent-requests 3회·my-activity/notices/youtube 각 2회 중복 호출 → 단일 fetch 공유로 정리",
+            "위젯 3분류: 조직지표(6) / 나의업무(3) / 소식·참고(5)"
+          ]
+        },
+        {
+          "id": "s6",
+          "name": "DB 실측 — 상태코드 정본 + 실사용 분포 + 데이터 품질",
+          "status": "done",
+          "file": "docs/inventory/data-profile.md",
+          "applied_to": "넥시오 MCP (MSSQL) read-only SELECT",
+          "logic": [
+            "STEPSTAT 코드 12개 확정: 1대기 2신청 3진행 4해결안제시 5테스트요청 6테스트완료 7시스템이관요청 8시스템이관승인 9완료 10취소요청 11취소 12반려 (13은 DB에 없음)",
+            "🔴 최대 발견 — PROGRESS 7·8·10 은 전 기간 0건. 시스템이관/취소요청 워크플로가 도입 이래 한 번도 안 돌았는데 필드8+버튼3+권한축4+상태분기2가 화면에 상주 중",
+            "5·6(테스트) 전 기간 10건(0.04%) — 준(準)미사용",
+            "실질 워크플로는 5단계(1→2→3→4→9) + 종료 2(11취소/12반려). 12상태를 그대로 옮기면 안 됨",
+            "미완료 건은 270건(1.1%)뿐. 전체 23,694건 중 완료가 94.9% → 목록 기본뷰는 미완료 우선, 완료건은 검색 진입으로 분리",
+            "PUBLICYN='N' 이 78.6%(18,631건) → 일반 고객사 사용자에겐 목록이 비어보이는 게 정상. empty state 에 이유 명시 필요 ('조회가 안돼요' 문의의 유력 원인)",
+            "데이터 품질: REQDATE 과거이상치 1,252건(1900-01-01 = 구시스템 이관분 날짜누락) / 미래이상치 3건(최대 2105년) → 신청화면에 날짜 상한 검증 추가",
+            "분류코드 정본 확보 — B1GUBUN1 분야9 / B1GUBUN2 모듈26 / B1GUBUN3 요청유형8"
+          ],
+          "verify": ["data-profile.md §7 에 재현 SQL 3개 기록"]
+        },
+        {
+          "id": "s7",
+          "name": "세션 의존 실측 — JWT 만으로 API 호출 가능한지 (사용자 확인 필요)",
+          "status": "pending",
+          "logic": [
+            "일부 엔드포인트가 HttpSession 을 직접 읽음(getEcoLineList(search, session)) → BFF 구현 방식을 가르는 분기점",
+            "DB 조회로는 확인 불가 — 개발서버 런타임 호출이 필요하므로 사용자가 실행"
+          ],
+          "verify": [
+            "세션 쿠키 없이 JWT 헤더만으로 /eco/request/list 가 200 을 반환하는가"
+          ]
+        },
+        {
+          "id": "s8",
+          "name": "업로드 경로 불일치 확인",
+          "status": "done",
+          "logic": [
+            "조회=OK_UPLOAD_URL 변수 / 신청=/Mobile/uploadFile — 의도인지 잔재인지",
+            "해소: 두 화면 모두 이미지 업로드는 CTX + '/eco/upload/image' 로 동일하고 변수명만 달랐다(ST001.jsp:6328 / ST002.jsp:2199). /Mobile/uploadFile 은 첨부파일 전용 경로로 별개. 상세: docs/design/redesign-ST002-신청.md §8"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P2",
+      "name": "UX 재설계 (정보 구조)",
+      "status": "done",
+      "depends_on": ["P1"],
+      "description": "6,611줄 한 화면을 단계/탭/모달로 분해. 디자인 시스템보다 먼저 — 색·폰트로는 이 문제가 안 고쳐진다.",
+      "steps": [
+        {
+          "id": "s4",
+          "name": "UX 원칙표 확정 (먼저 수행 — 나머지 3화면의 판정 기준)",
+          "status": "done",
+          "file": "docs/design/ux-principles.md",
+          "logic": [
+            "원칙 8개: P1 한화면한결정 / P2 안쓰는건안그린다 / P3 목록·상세분리 / P4 액션단일화 / P5 상태시각화 / P6 권한단일함수+fail-closed / P7 빈상태설명 / P8 B2B밀도",
+            "화면 설계마다 통과 확인하는 판정 체크리스트 8항목 포함",
+            "'이 원칙이 부정하는 것' 5개 명시 — 1:1 이식 금지, 기능삭제 아님(접는 것), 프론트 권한 재구현 금지, 토스 여백 그대로 금지, 12상태 전부 1급 UI 금지"
+          ]
+        },
+        {
+          "id": "s1",
+          "name": "조회 화면 재설계 — 목록/상세 분리 + Sheet + 탭 + 단일 액션바",
+          "status": "done",
+          "file": "docs/design/redesign-ST001-조회.md",
+          "logic": [
+            "주된 결정 = '내 요청이 어디까지 왔고 다음에 뭘 해야 하나' — 검색화면이 아니라 작업 큐. 기본뷰를 '진행 중 270건'으로",
+            "필터 13개 → 상시 4개(keyword/custCode/progress/기간) + 접기 9개. myOnlyYn 은 뷰 전환 탭으로 승격",
+            "목록 컬럼 7개로 제한, 나머지 95필드는 우측 Sheet 로. 상세 내부는 탭 5개(요청내용/처리결과/댓글/첨부/이력)로 102필드 수납",
+            "상태 4 이상이면 '처리결과' 탭 기본 선택 — 고객이 실제 읽는 부분이므로",
+            "액션 25종 → 상태별 최대 3개, canDo() 단일 함수 경유",
+            "기본 화면에서 제거: 필드14 + 버튼5 + 권한축4 + 상태분기4블록 (고객사 플래그로 조건부 렌더)"
+          ]
+        },
+        {
+          "id": "s3",
+          "name": "대시보드 재설계 — 위젯 14 → 3구역, 전 위젯 클릭 가능",
+          "status": "done",
+          "file": "docs/design/redesign-ndashboard.md",
+          "logic": [
+            "주된 결정 = '오늘 내가 손대야 할 건이 무엇인가'. 감상용 지표판이 아니라 조회화면 관문 — 모든 위젯이 조건 걸린 조회로 이동",
+            "3구역: ①지금할일(요약카드4+내미처리+회사미해결) ②현황(차트5) ③소식(공지/최근/영상)",
+            "역할별 첫 화면 분기 — 서버가 데이터 격리하므로 화면 구성만 변경",
+            "중복 호출 정리: recent-requests 3회→1, my-activity/notices/youtube 각 2회→1",
+            "🔴 status-distribution 도넛은 완료가 94.9%라 현 형태로 정보량 0 → 미완료 270건만 그리거나 완료를 별도 표기"
+          ]
+        },
+        {
+          "id": "s2",
+          "name": "신청 화면 재설계 — Step 분해 안 함, 인라인 검증으로 전환",
+          "status": "done",
+          "file": "docs/design/redesign-ST002-신청.md",
+          "logic": [
+            "조회와 정반대 결론 — 입력 20개뿐이라 Step 분해 불필요. 단일화면 2단(필수 위/선택 접기)",
+            "순차 alert 8단계 → 인라인 검증 + 제출 시 전체 요약. 이메일 누락은 이 화면에서 못 고치므로 차단배너+링크로 특수 처리",
+            "계약시간 3종은 disabled 입력칸 모양 → 하단 정보 스트립으로 분리, showYn='N'이면 영역 자체 미렌더",
+            "참조자 3중 UI(refGroupSelect+ccInput+refEmail) → 토큰 입력 단일 컴포넌트",
+            "이미지 붙여넣기 가드는 유지하되 저장 시점(L2409)이 아니라 붙여넣기 시점에 즉시 경고 + '파일로 첨부' 버튼"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "name": "디자인 시스템 구축",
+      "status": "done",
+      "depends_on": ["P2"],
+      "note": "사용자가 별도 디자인 세션에서 진행 중. 산출물(design-system.md / styleguide.html / tokens.css)을 docs/design/ 에 받으면 P2 문서와 대조해 누락 컴포넌트를 잡는다. 필수 확인: Sheet · Stepper · Tabs · Table · 토큰입력 5종.",
+      "steps": [
+        {
+          "id": "s1",
+          "name": "토큰 정의 (사용자 디자인 세션 수행)",
+          "status": "done",
+          "file": "docs/design/tokens.css",
+          "logic": [
+            "168 토큰 수령 — bg24/fg20/accent18/border12/fs11/shadow9 + semantic 4계열 + ctl/focus/ease/sp/row/z. 다크·라이트 [data-theme] 양방향"
+          ]
+        },
+        {
+          "id": "s2",
+          "name": "컴포넌트 스펙 (사용자 디자인 세션 수행)",
+          "status": "done",
+          "file": "docs/design/styleguide.html",
+          "logic": [
+            "섹션 24개 — 토큰7 + 컴포넌트14(button/input/choice/badge/card/tabs/accordion/stepper/sheet/modal/table/toast/tooltip/skeleton) + 규칙3(compose/a11y/code)"
+          ]
+        },
+        {
+          "id": "s3",
+          "name": "수령 검수 — P2 설계와 대조",
+          "status": "done",
+          "file": "docs/design/design-system-review.md",
+          "logic": [
+            "판정 합격. compose 섹션='100필드 배치 규칙', Sheet='조회 화면의 기본 상세 진입 방식', Table='조회 화면의 본체'+정렬+페이지네이션 — P2 문서를 그대로 받아 만들어졌다",
+            "필수 5종 중 Sheet·Stepper·Tabs·Table 4종 확인",
+            "🔴 누락 4건은 P5 에서 조립: Combobox(모듈26 선택) · Chip/Token input(참조자) · Empty state(비공개78.6% → 원칙P7 핵심) · RichText prose 스타일. 전부 기존 토큰 조합으로 가능, 새 토큰 요청 불필요",
+            "⚠️ 조정 1건 — 디자인은 4탭 전제, 우리 설계는 5탭(댓글 포함). A안(5탭 유지) 권장, 탭당 30필드 이하라 compose 규칙 안 깨짐"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "name": "하네스 세팅 (harness-init, 새 세션)",
+      "status": "done",
+      "depends_on": ["P2"],
+      "note": "2026-07-30 의존성 완화 — 당초 P3(디자인시스템) 의존으로 잡았으나 과했다. 하네스는 CLAUDE.md·디렉토리·권한·검증장치를 만드는 단계라 디자인 산출물이 필요 없다. 오히려 프로젝트 뼈대가 먼저 있어야 tokens.css 를 놓을 자리가 생기므로 P3 보다 먼저 하는 게 자연스럽다.",
+      "steps": [
+        {
+          "id": "s1",
+          "name": "harness-init 실행 — Full 모드",
+          "status": "done",
+          "logic": [
+            "실측 버전: Next.js 16.2.12 · React 19.2.4 · Tailwind 4 · TypeScript strict · ESLint 9 flat · vitest 4 + jsdom + Testing Library · prettier 3",
+            "create-next-app 을 프로젝트 루트에서 직접 못 돌린다 — CLAUDE.md 가 conflict 목록에 걸려 중단됨(docs/ 는 허용 목록). scratchpad 에 --skip-install 로 생성 후 설정파일만 복사하는 우회로 해결",
+            "vitest 4(Vite 8)는 tsconfig paths 를 네이티브 지원 → resolve.tsconfigPaths: true. vite-tsconfig-paths 플러그인 불필요(설치 후 제거)",
+            "🔴 prettier 를 문서에 돌리면 안 된다 — 한글 표시폭이 2인데 문자 수로 표를 정렬해 오히려 어긋나고 기존 산출물 diff 가 오염된다. .prettierignore 에 docs/ + **/*.md 제외, prettier 는 코드(ts/tsx/css/json)만 담당",
+            "🔴 .gitattributes(* text=auto eol=lf) 필수 — core.autocrlf=true 환경에서 체크아웃하면 CRLF 가 되고 prettier(endOfLine lf)가 전 파일을 떨궈 verify 가 깨진다",
+            "기능 라이브러리(react-query/tiptap/zod 등 tech-stack.md 10종)는 설치하지 않았다 — 쓰는 단계(P5·P6)에서 설치. 안 쓰는 의존성을 미리 쌓지 않는다",
+            "shadcn/ui init 도 P5 로 미룸 — init 이 globals.css 를 건드리는데 tokens.css 이식과 같은 작업이라 한 번에 하는 게 맞다",
+            "git: main 브랜치 새 repo. 첫 커밋 2f5f81c (44파일). 원본 SVN 과 무관"
+          ],
+          "verify": [
+            "npm run verify (lint → typecheck → test) 3종 green",
+            "npm run format:check green",
+            "tests/smoke.test.tsx 1개 통과 = vitest + jsdom + JSX 변환 + \"@/*\" 별칭 생존 확인",
+            "block-dangerous-bash.sh 직접 호출 — rm -rf 는 exit 2(차단), npm run verify 는 exit 0(통과)",
+            "CLAUDE.md 86줄 (하네스 상한 200줄)"
+          ]
+        },
+        {
+          "id": "s2",
+          "name": "P1~P3 산출물을 docs/ 로 정리하고 CLAUDE.md 에서 포인터로 연결",
+          "status": "done",
+          "logic": [
+            "docs/ 구조 확정 — inventory(원본분석) / design(설계) / decisions(ADR) / progress(진행). PRD.md·ARCHITECTURE.md 골격 추가",
+            "ADR-0001 = BFF 세션 쿠키 릴레이(자체 세션 생성 금지). design_decisions.인증 의 정정 내역을 되돌릴 수 없는 결정으로 승격 기록",
+            "CLAUDE.md 갱신 — 명령어 절 확정(npm run verify), 부트스트랩 문구 제거, HOW NOT 4행(prettier 문서 포맷 금지 추가), 참고문서에 PRD·ARCHITECTURE·rules 포인터 연결",
+            "PRD.md 의 성공 기준은 ⬜미확정으로 남겼다 — 추측으로 채우지 않는다. 열린 항목은 본 progress JSON 이 정본(중복 관리 금지)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "name": "뼈대 + 디자인 시스템 코드화",
+      "status": "done",
+      "depends_on": ["P4"],
+      "note": "2026-07-30 사용자 지시로 P5·P6 를 한 세션에 자율 진행. '개발 스키마를 일단 사용' + 'UI/UX 가 가장 중요' → 개발 DB 직접 조회 어댑터를 만들고 실데이터로 3화면을 구현했다. 상세 결정: docs/decisions/ADR-0002 · ADR-0003",
+      "steps": [
+        {
+          "id": "s1",
+          "name": "토큰 → globals.css CSS 변수 + 컴포넌트 CSS 레이어",
+          "status": "done",
+          "logic": [
+            "docs/design/tokens.css 를 src/app/tokens.css 로 복사(정본은 docs 쪽, 손대지 않음) → globals.css 가 @import",
+            "@theme inline 으로 토큰을 Tailwind 유틸로 노출 — inline 이라 [data-theme=dark] 전환이 유틸에도 적용된다",
+            "LAYER 2 컴포넌트 클래스 작성(.btn .input .tbl .tabs .seg .sheet .stp .mstp .badge .chip .tokenbox .prose-nx …). 수치는 전부 var(--*) 참조",
+            "🔴 shadcn/ui CLI 는 쓰지 않았다 — init 이 globals.css 를 자체 변수 체계로 덮어써 토큰 168개와 이름·구조가 충돌한다. Radix 프리미티브 + 자체 CSS 로 대체(ADR-0003)",
+            "styleguide.html 은 재사용할 CSS 클래스가 없는 템플릿 아티팩트(인라인 스타일)였다 → 수치 스펙만 추출해 클래스로 고정",
+            "밀도 3단계([data-density])와 테마 3종을 상단바에서 전환 — tokens.css 가 이미 지원"
+          ]
+        },
+        {
+          "id": "s2",
+          "name": "레이아웃/네비게이션",
+          "status": "done",
+          "logic": [
+            "AppShell(서버) = Sidebar + Topbar + main. DB 연결 실패 시 원인·확인순서를 화면에 그대로 노출(오류를 감추지 않는다)",
+            "Topbar: 밀도·테마 전환 + 개발용 역할 전환(페르소나 3종). 테마는 next/script beforeInteractive 로 첫 페인트 전 적용",
+            "테마·밀도 상태는 useSyncExternalStore 로 localStorage 를 읽는다 — effect 안 동기 setState 회피(eslint react-hooks/set-state-in-effect)"
+          ]
+        },
+        {
+          "id": "s3",
+          "name": "데이터 레이어 + route handler 기반 구조",
+          "status": "done",
+          "note": "⚠️ 인증은 Spring 세션 쿠키 릴레이(ADR-0001)가 아니라 개발용 페르소나 쿠키다. 임시 조치이며 교체 대상은 src/lib/data/ 하나 — ADR-0002 의 전환 체크리스트 참조",
+          "logic": [
+            "src/lib/db.ts — mssql 풀(HMR 대응 전역 캐시) + select() 가 SELECT/WITH 이외 구문을 기계적으로 거부(read-only 강제). 자격증명 기본값 없음",
+            "src/lib/data/tickets.ts — NX_OPTREPORTD(97컬럼) → 정규화 TicketRow/TicketDetail. 원본 컬럼명이 이 파일 밖으로 나가지 않는다",
+            "scopeClause() 한 곳에 가시성 제한 집중 — INTERNAL 전체 / VENDOR 배정건만 / CUSTOMER 자사+비공개는 본인·승인자만 (fail-closed). 운영 전환 시 삭제",
+            "src/lib/data/dashboard.ts — 위젯 10종 병렬 조회, allSettled 로 하나가 죽어도 전체가 안 죽는다(실패는 콘솔에 남긴다)",
+            "route handler: /api/session(개발 역할전환) · /api/tickets/[echoNum] · /api/tickets/[echoNum]/action · /api/diag(자기진단)",
+            "액션 라우트는 클라이언트가 보낸 상태를 믿지 않고 서버에서 티켓을 다시 읽어 canDo() 재판정. 쓰기는 ALLOW_DEV_WRITES=false 로 차단(202)"
+          ],
+          "verify": ["/api/diag 8개 항목 전부 ok (db·user·list.open·list.all·detail·meta·dashboard)"]
+        },
+        {
+          "id": "s4",
+          "name": "스타일가이드 페이지 렌더 = green",
+          "status": "done",
+          "file": "src/app/styleguide/page.tsx",
+          "logic": [
+            "정적 아티팩트(docs/design/styleguide.html)와 달리 실제 코드가 그리는 결과를 보여주는 살아있는 스타일가이드",
+            "색·타이포·상태배지 12종·Stepper·버튼·입력·Combobox·TokenInput·Sheet·Modal·Tabs·테이블·빈상태·리치텍스트·스켈레톤 수록"
+          ],
+          "verify": ["/styleguide 콘솔 에러 0, 토큰 반영 확인", "테마·밀도 전환 시 전 요소가 함께 변함"]
+        }
+      ]
+    },
+    {
+      "id": "P6",
+      "name": "MVP 화면 구현",
+      "status": "in_progress",
+      "depends_on": ["P5"],
+      "description": "대시보드 → 조회 → 신청 순서. 읽기 경로는 3화면 모두 실데이터로 완성. 쓰기 경로(저장·액션·댓글)는 s4 로 분리.",
+      "steps": [
+        {
+          "id": "s1",
+          "name": "대시보드 구현 — 읽기전용, 디자인시스템 첫 검증 무대",
+          "status": "done",
+          "file": "src/app/dashboard/page.tsx",
+          "logic": [
+            "3구역(①지금할일 ②현황 ③소식). 요약카드 4 + 내건/회사미해결 목록 + 차트 3 + 랭킹 2 + 공지·최근접수",
+            "모든 위젯이 조건 걸린 조회로 이동 — 막다른 위젯 없음(StatCard·목록행·랭킹 전부 링크)",
+            "🔴 상태분포 도넛은 미완료만 그리고 종료건은 큰 숫자로 분리 — 완료가 99%라 한 도넛에 그리면 정보량 0(재설계 §4 지적 그대로 반영)",
+            "역할별 분기: 고객사에게는 담당자별 실적 대신 안내 카드. '내 건'의 정의도 역할별로 다르다(고객사=CUSTPERSON / 처리자=SUCCERSON)",
+            "recharts 색을 var() 로 넘겨 다크모드 전환에 자동 대응",
+            "실측 확인(운영팀 시점): 미완료 171 · 진행중 88 · 해결안대기 46 · 미읽음댓글 152 · 종료 5,028"
+          ],
+          "verify": [
+            "운영팀/고객사 두 페르소나로 각각 렌더 확인, 콘솔 에러 0",
+            "고객사 페르소나 전환 시 범위가 자사 10건으로 축소되고 담당자 실적이 감춰짐"
+          ]
+        },
+        {
+          "id": "s2",
+          "name": "조회(ST001) 구현 — 최난도이자 프로젝트의 핵심 목표",
+          "status": "done",
+          "file": "src/app/requests/page.tsx",
+          "logic": [
+            "목록/상세 분리 — 우측 Sheet(Radix Dialog). 목록 스크롤·필터 유지, URL(?open=)에 반영돼 공유·새로고침 가능",
+            "뷰 전환 3종(진행중/내담당·내요청/전체검색) — myOnlyYn 을 필터에서 탭으로 승격",
+            "필터 상시 4개(검색어·고객사·상태·기간) + 접기 5개. 컬럼 7개로 제한",
+            "정렬: 진행중·내건은 전량(≤1000) 받아 전 컬럼 클라이언트 정렬 / 전체검색은 서버 페이징 + 페이지 내 정렬 한계를 배너로 명시(조용한 절단 금지)",
+            "상세 탭 4개. 상태 4 이상이면 '처리결과' 탭 기본 선택 — 고객이 실제 읽는 부분",
+            "Stepper 는 주 경로 5단계 + 고객사 플래그(TESTYN/SYSTEMYN)가 켜진 단계만. 실동작 확인: TESTYN 켜진 고객사는 테스트 단계가 자동 추가됨",
+            "액션바는 canDo() 로 계산된 것만 최대 3개. 취소는 신청자 본인만 — 담당자에게는 '취소 권유'만 보임(정책 유지 + 왕복 축소)",
+            "취소 불가 사유를 화면에 설명(cancelHint) — 원본은 규칙을 알려주지 않아 문의가 발생했다",
+            "빈 상태에 비공개 78.7% 사유 + '필터 초기화'/'전체 검색으로 넓히기' 제시"
+          ],
+          "verify": [
+            "상태4 티켓 열기 → 처리결과 탭 기본선택 · 스테퍼 4단계 current · 액션 '취소 권유'",
+            "상태3 티켓(신청자 본인) → 액션 '취소 요청' + 테스트 단계 표시 (당시 개발 DB 실티켓으로 검증 — 번호는 익명화로 제거)",
+            "제목 HTML 엔티티 디코딩 확인('26년 6월…)"
+          ]
+        },
+        {
+          "id": "s3",
+          "name": "신청(ST002) 구현 — 입력 20개, 가장 가벼움",
+          "status": "done",
+          "file": "src/components/requests/RequestForm.tsx",
+          "logic": [
+            "Step 분해 안 함 — 단일 화면 2단(필수 위 / 추가설정 접힘). react-hook-form + zod(schemas.ts)",
+            "순차 alert 8단계 → 포커스 이탈 시 인라인 + 제출 시 미충족 전체 요약 + 첫 필드로 스크롤·포커스(REQUIRED_ORDER 순서 보존)",
+            "이메일 누락은 인라인 오류가 아니라 차단 배너 — 이 화면에서 고칠 수 없는 값이라서",
+            "이미지 붙여넣기 가드를 **붙여넣기 시점**에 즉시 경고 + '파일로 첨부' 버튼(원본은 저장 버튼 누른 뒤에야 알려줬다)",
+            "참조자 3중 UI → 토큰 입력 하나. 검증은 토큰 추가 시점",
+            "희망완료일 상한 2년(미래 이상치 2105년 재발 방지). 계약시간 스트립은 SHOWYN='N' 이면 영역 자체 미렌더"
+          ],
+          "verify": ["/requests/new 렌더 · 필수 7개 안내 · 콘솔 에러 0"]
+        },
+        {
+          "id": "s4",
+          "name": "쓰기 경로 구현 (신청 저장 · 액션 · 댓글)",
+          "status": "pending",
+          "logic": [
+            "현재는 UI·검증·권한판정까지만. 저장은 ALLOW_DEV_WRITES=false 로 차단돼 202/501 을 반환한다",
+            "선행 결정 필요: ① Spring 액션 API 연결(ADR-0001 로 복귀) vs ② 개발 DB 직접 UPDATE",
+            "②를 택하면 NX_OPTREPORTD_LOG(68컬럼)·NX_HISTORY 이력 규칙을 먼저 확인해야 한다 — 원본이 어떤 감사 흔적을 남기는지 모른 채 쓰면 안 된다"
+          ]
+        },
+        {
+          "id": "s4-note",
+          "name": "(참고) 쓰기 경로의 선행 결정이 P7 로 해소됨",
+          "status": "done",
+          "logic": [
+            "P7 전환으로 'Spring 연결 vs 개발 DB UPDATE' 딜레마가 사라졌다 — 자체 SQLite 이므로 UPDATE + 이력 로그(NX_OPTREPORTR IS_LOG_YN='Y' 행) 기록으로 구현하면 된다",
+            "ALLOW_DEV_WRITES 게이트와 canDo() 재판정 구조는 그대로 유지"
+          ]
+        },
+        {
+          "id": "s5",
+          "name": "Tiptap 리치 텍스트 에디터 도입",
+          "status": "pending",
+          "logic": [
+            "읽기(sanitize + .prose-nx)는 완료. 편집기는 미도입 — 댓글·처리내역 입력이 지금은 textarea",
+            "tech-stack.md 선정 근거 유지. 기존 summernote HTML 손실 여부를 실데이터로 먼저 검증할 것",
+            "⚠️ 저장값이 이스케이프된 HTML 이라는 실측(ADR-0002)을 에디터 초기값 주입에 반영해야 한다"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P7",
+      "name": "사이드 프로젝트 전환 — 자체 DB + 배포 준비",
+      "status": "in_progress",
+      "depends_on": ["P6"],
+      "description": "2026-08-14 사용자 결정: 실서비스가 아니라 '사내에서 이런 걸 만들었다' 쇼케이스. 회사 DB 연결 폐기 → SQLite + 가상 시드, Vercel 배포 + GitHub Actions CI.",
+      "steps": [
+        {
+          "id": "s1",
+          "name": "mssql → better-sqlite3 + 가상 시드 생성기",
+          "status": "done",
+          "logic": [
+            "테이블 7개(사용 부분집합)를 SQLite DDL 로 재현 — 컬럼명 동일해 src/lib/data 쿼리 구조 보존",
+            "결정적 시드: 가상 고객사 8곳·인물 18명·티켓 ~2,250건. 실측 프로파일의 모양 재현(이관 과반·비공개 다수·상태 7/8/10=0·빈 제목·이스케이프 HTML·1900-01-01 이상치)",
+            "로컬 .data/nexio.db 자동 생성(db:reset 로 재시드) / Vercel 은 :memory: 콜드스타트 시드 → 배포 환경변수 0개",
+            "T-SQL→SQLite 방언 변환: ISNULL→COALESCE, TOP→LIMIT, OFFSET FETCH→LIMIT OFFSET, DATEADD/GETDATE→date(), FORMAT→strftime, DATEDIFF→julianday",
+            "페르소나 실계정 3종 → 가상 4종(내부/고객사 승인권자/고객사 일반/외부업체). 코드 내 실고객사명 전부 교체"
+          ],
+          "verify": [
+            "npm run verify 71개 통과 (통합 테스트 11개 신규 — 시드 불변식·fail-closed·대시보드 집계)",
+            "npm run build 성공 (전 라우트 dynamic — 빌드 타임 DB 접근 없음)",
+            "/api/diag 전 항목 ok (티켓 2,249건) · 타사 티켓 접근 404 · 페르소나 4종 전환 동작"
+          ]
+        },
+        {
+          "id": "s2",
+          "name": "CI/CD + README + 배포 준비",
+          "status": "done",
+          "logic": [
+            ".github/workflows/ci.yml — push/PR 마다 verify + format:check + build",
+            "README.md 포트폴리오용 신규 작성 (가상 데이터 명시)",
+            "Vercel 은 저장소 연결만 하면 됨 — VERCEL 환경변수 감지로 :memory: 자동"
+          ]
+        },
+        {
+          "id": "s3",
+          "name": "공개 전 익명화 — docs/ 와 git 이력",
+          "status": "done",
+          "logic": [
+            "docs 익명화 완료 (2026-08-14): 알려진 목록(사명·고객사·계정·DB명·쿠키명) 치환 + 멀티에이전트 전수 정독 스윕으로 목록 밖 실명 추가 검출·치환 — 운영사명, 실존 기업명 6종(스타일가이드 샘플 포함), 실명 인용 2건, 실티켓번호 3건, 사내 서비스명, 아티팩트 UUID",
+            "실측 수치(건수·비율)는 식별자가 아니라서 유지 — 재설계 근거의 핵심이라 지우면 문서 가치가 사라진다",
+            ".claude/settings.json 의 원본 경로 deny 규칙은 gitignore 대상인 settings.local.json 으로 이동 (로컬 보호 유지)",
+            "검증: 실명 24종 전체 패턴 grep = 0건 (gitignore 파일 제외)",
+            "🔴 git 이력 초기화는 사용자 실행 대기 — 과거 커밋에 치환 전 내용이 남아 있으므로 공개 push 는 반드시 orphan 새 이력으로"
+          ]
+        }
+      ]
+    }
+  ],
+  "non_goals": [
+    "Spring 백엔드 수정 — API 가 모자라면 별건으로 논의",
+    "ST003(선급금 정산)·ST004(Cross charge) — getData20 게이트웨이 경유라 통로가 다름",
+    "admin/* 화면 전체 (60개 이상)",
+    "SAP B1 애드온 관련 작업 일체",
+    "원본 repo 로의 커밋 — SVN, 사용자만 수행"
+  ],
+  "open_items": [
+    "Tiptap 이 기존 summernote 산출 HTML 을 깨뜨리지 않는지 실데이터 샘플로 검증 (P5)",
+    "아카이브 뷰의 '페이지 내 정렬' 한계를 사용자에게 어떻게 표기할지",
+    "'취소 권유' 알림을 상태 10(취소요청)으로 구현할지, 별도 알림 채널로 둘지 — P5 에서 결정 (상태 10 이 전 기간 0건인 이유가 미확인이라 재활용 가능한지 판단 보류)",
+    "P1.s7 축소 — 인증 구조는 소스로 확정(세션쿠키 기반). 남은 건 '세션 쿠키만 전달하면 /eco/request/list 가 200 을 주는지' 실호출 확인뿐. 구조가 확정돼 BFF 설계 진행에는 지장 없음",
+    "🔴 원본 CSRF 무력화 — CsrfSecurityRequestMatcher.java:29 의 ALLOWED_METHODS 에 모든 HTTP 메서드가 들어 있어 CSRF 검사가 한 번도 수행되지 않는다(주석 처리된 원래 코드는 안전 메서드만 나열). 원본 수정 여부는 사용자 판단. 새 앱에서는 재현하지 않는다",
+    "🔴 /c4web/** 가 permitAll 이라 ST001·ST002 화면이 비인증 접근 가능한데 컨트롤러는 @AuthenticationPrincipal 을 쓴다 → loginUser null 가능. 새 앱은 화면도 인증 뒤에 둔다(fail-closed)",
+    "/mail/send-notification 의 CTX 접두 누락이 원본 버그인지",
+    "대시보드 hub-memory / my-activity 위젯의 MVP 포함 여부",
+    "🔴 담당자 미배정 건의 편집 정책 — 원본 isCurrentAssigneeLoginUser()(ST001.jsp:5924)가 succPerson 이 비면 true 를 반환해 아무 처리자나 편집 가능(fail-open). 'A 현행 유지' 권장(operCompany 격리가 이미 걸려 있어 무방비 아님) vs 'B fail-closed(배정 전 차단)'. 사용자 확정 필요. 상세: docs/design/permissions-spec.md §5",
+    "canApproveRequest 를 서버가 어떤 규칙으로 계산하는지 — BFF 가 그대로 전달만 하면 되는지"
+  ],
+  "session_continuation": {
+    "next_step": "P6.s4",
+    "note": "🔄 사이드 프로젝트 전환 + 익명화 완료(P7 전체 done — ADR-0004). SQLite+가상 시드로 3화면 동작, CI/README/배포 준비 완료, verify 71개 green, repo 내 실명 0건(grep 검증). 남은 것: ① 사용자 실행 — git orphan 새 이력 생성 → GitHub push → Vercel 연결 (과거 이력 공개 금지) ② P6.s4 쓰기 경로(자체 DB UPDATE+이력 로그) ③ P6.s5 Tiptap. 검증: npm run verify(71개) · npm run build · /api/diag.",
+    "compact_after_each_step": true
+  }
+}

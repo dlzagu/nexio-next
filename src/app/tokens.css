@@ -1,0 +1,258 @@
+/* Nexio 디자인 시스템 토큰 — 디자인 세션 산출물 (2026-07-30)
+   출처 아티팩트: b84cb29d-8423-4092-aa7f-0d9f1677d390
+   ⚠️ 손으로 고치지 말 것. 디자인 시스템이 갱신되면 다시 추출한다. */
+
+/* ============================================================
+   NEXIO DESIGN SYSTEM — LAYER 1: TOKENS
+   B2B SAP maintenance ticket portal · ko-KR · density-first
+   ============================================================ */
+
+:root, [data-theme="light"] {
+  /* ---- 1.1 RAW PALETTE · neutral (hue 258, chroma 0~0.016) ---- */
+  --gray-0:#ffffff;  --gray-25:#fafbfc;  --gray-50:#f6f7f9;  --gray-100:#f2f3f5;
+  --gray-150:#eceef1; --gray-200:#e5e7eb; --gray-300:#d5d9dd; --gray-400:#b6bbc2;
+  --gray-500:#9499a2; --gray-550:#8b919c; --gray-600:#6f757e; --gray-650:#626871;
+  --gray-700:#555b64; --gray-800:#3b4148;
+  --gray-850:#2e333a; --gray-900:#21252b; --gray-925:#191d22; --gray-950:#13161b;
+  --gray-975:#0d1014; --gray-1000:#080a0e;
+
+  /* ---- 1.2 RAW PALETTE · brand (hue 262) ---- */
+  --brand-50:#f1f6ff;  --brand-100:#e0ecff; --brand-200:#c5dbff; --brand-300:#9fc2ff;
+  --brand-400:#6a9cfb; --brand-500:#3874ea; --brand-600:#215ed7; --brand-700:#184db6;
+  --brand-800:#133e91; --brand-900:#12316e; --brand-950:#0c2049;
+
+  /* ---- 1.3 RAW PALETTE · semantic ---- */
+  --success-50:#ebf9ef;  --success-100:#d5f3de; --success-200:#b5e9c6; --success-300:#87d7a4;
+  --success-400:#53bd7f; --success-500:#2ba162; --success-600:#17864e; --success-700:#13693d;
+  --success-800:#115431; --success-900:#0f4025; --success-950:#0b2a18;
+
+  --warning-50:#fff6e7;  --warning-100:#ffeaca; --warning-200:#ffd79d; --warning-300:#ffc16b;
+  --warning-400:#f8ac3d; --warning-500:#e89a16; --warning-600:#c88100; --warning-700:#9a6200;
+  --warning-800:#784c00; --warning-900:#5e3b04; --warning-950:#3d2604;
+
+  --danger-50:#fff1ef;  --danger-100:#ffe3e0; --danger-200:#ffccc7; --danger-300:#ffaaa3;
+  --danger-400:#f8726c; --danger-500:#e23a3d; --danger-600:#ce1b29; --danger-700:#a9131f;
+  --danger-800:#86141a; --danger-900:#6a1617; --danger-950:#440f0f;
+
+  --info-50:#ecf8fd;  --info-100:#d8f1fc; --info-200:#b9e5f8; --info-300:#8bd3f0;
+  --info-400:#4eb8dd; --info-500:#019cc5; --info-600:#0084ad; --info-700:#00698c;
+  --info-800:#00526d; --info-900:#003f54; --info-950:#002937;
+
+  /* ---- 1.4 SEMANTIC SURFACE (light) ---- */
+  --bg-canvas:var(--gray-50);
+  --bg-surface:var(--gray-0);
+  --bg-raised:var(--gray-0);
+  --bg-sunken:var(--gray-100);
+  --bg-subtle:var(--gray-50);
+  --bg-muted:var(--gray-100);
+  --bg-hover:var(--gray-100);
+  --bg-active:var(--gray-150);
+  --bg-selected:var(--brand-50);
+  --bg-disabled:var(--gray-100);
+  --bg-overlay:rgb(8 10 14 / .40);
+  --bg-tooltip:var(--gray-900);
+
+  /* ---- 1.5 SEMANTIC FOREGROUND (light) ---- */
+  --fg-default:var(--gray-900);
+  --fg-strong:var(--gray-1000);
+  --fg-muted:var(--gray-700);
+  --fg-subtle:var(--gray-600);
+  --fg-placeholder:var(--gray-600);
+  --fg-disabled:var(--gray-500);
+  --fg-on-solid:var(--gray-0);
+  --fg-on-tooltip:var(--gray-25);
+  --fg-link:var(--brand-700);
+  --fg-link-hover:var(--brand-800);
+
+  /* ---- 1.6 BORDER (light) ---- */
+  --border-subtle:var(--gray-150);
+  --border-default:var(--gray-200);
+  --border-strong:var(--gray-300);
+  --border-input:var(--gray-550);  /* 3.17:1 — 비텍스트 대비 1.4.11 충족 */
+  --border-hover:var(--gray-600);
+  --border-disabled:var(--gray-200);
+
+  /* ---- 1.7 ACCENT + STATUS ROLES (light) ---- */
+  --accent-solid:var(--brand-600);
+  --accent-solid-hover:var(--brand-700);
+  --accent-solid-active:var(--brand-800);
+  --accent-fg:var(--gray-0);
+  --accent-subtle:var(--brand-50);
+  --accent-subtle-hover:var(--brand-100);
+  --accent-border:var(--brand-200);
+  --accent-text:var(--brand-700);
+  --accent-ring:rgb(56 116 234 / .32);
+
+  --success-solid:var(--success-600); --success-fg:var(--gray-0);
+  --success-subtle:var(--success-50); --success-border:var(--success-200); --success-text:var(--success-700);
+  --warning-solid:var(--warning-300); --warning-fg:var(--gray-1000);
+  --warning-subtle:var(--warning-50); --warning-border:var(--warning-200); --warning-text:var(--warning-700);
+  --danger-solid:var(--danger-600);  --danger-fg:var(--gray-0);
+  --danger-subtle:var(--danger-50);  --danger-border:var(--danger-200);  --danger-text:var(--danger-700);
+  --info-solid:var(--info-700);      --info-fg:var(--gray-0);
+  --info-subtle:var(--info-50);      --info-border:var(--info-200);      --info-text:var(--info-700);
+
+  /* ---- 1.8 ELEVATION (light) ---- */
+  --shadow-0:none;
+  --shadow-1:0 1px 2px 0 rgb(8 10 14 / .05), 0 1px 3px 0 rgb(8 10 14 / .04);
+  --shadow-2:0 2px 4px -1px rgb(8 10 14 / .06), 0 6px 14px -3px rgb(8 10 14 / .09);
+  --shadow-3:0 6px 12px -3px rgb(8 10 14 / .09), 0 18px 36px -10px rgb(8 10 14 / .14);
+  --shadow-4:0 10px 20px -6px rgb(8 10 14 / .12), 0 32px 64px -18px rgb(8 10 14 / .20);
+  --focus-ring:0 0 0 2px var(--bg-surface), 0 0 0 4px var(--brand-500);
+  --focus-ring-danger:0 0 0 2px var(--bg-surface), 0 0 0 4px var(--danger-500);
+  --focus-ring-inset:inset 0 0 0 1px var(--brand-500), 0 0 0 3px var(--accent-ring);
+
+  /* ---- 1.9 TYPOGRAPHY · self-contained system stack ---- */
+  --font-sans:-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard Variable", Pretendard, "Segoe UI", "Malgun Gothic", "맑은 고딕", "Noto Sans KR", "Nanum Gothic", sans-serif;
+  --font-mono:ui-monospace, "SF Mono", "JetBrains Mono", "D2Coding", Menlo, Consolas, monospace;
+
+  /* size / line-height / tracking — tuned for Hangul (see §2.2) */
+  --fs-11:11px; --lh-11:16px; --ls-11:0.02em;
+  --fs-12:12px; --lh-12:18px; --ls-12:0em;
+  --fs-13:13px; --lh-13:20px; --ls-13:-0.003em;
+  --fs-14:14px; --lh-14:22px; --ls-14:-0.006em;
+  --fs-15:15px; --lh-15:24px; --ls-15:-0.008em;
+  --fs-16:16px; --lh-16:26px; --ls-16:-0.011em;
+  --fs-18:18px; --lh-18:28px; --ls-18:-0.014em;
+  --fs-20:20px; --lh-20:30px; --ls-20:-0.016em;
+  --fs-24:24px; --lh-24:34px; --ls-24:-0.019em;
+  --fs-30:30px; --lh-30:40px; --ls-30:-0.021em;
+  --fs-36:36px; --lh-36:46px; --ls-36:-0.023em;
+  --fw-regular:400; --fw-medium:500; --fw-semibold:600; --fw-bold:700;
+
+  /* ---- 1.10 SPACING · 2px base, dense-first ---- */
+  --sp-0:0px;   --sp-2:2px;   --sp-4:4px;   --sp-6:6px;   --sp-8:8px;
+  --sp-10:10px; --sp-12:12px; --sp-14:14px; --sp-16:16px; --sp-20:20px;
+  --sp-24:24px; --sp-28:28px; --sp-32:32px; --sp-40:40px; --sp-48:48px;
+  --sp-56:56px; --sp-64:64px; --sp-80:80px;
+
+  /* ---- 1.11 RADIUS ---- */
+  --r-xs:3px; --r-sm:5px; --r-md:7px; --r-lg:10px; --r-xl:14px; --r-2xl:18px; --r-full:999px;
+
+  /* ---- 1.12 BORDER WIDTH ---- */
+  --bw-hair:1px; --bw-thick:1.5px; --bw-focus:2px;
+
+  /* ---- 1.13 MOTION ---- */
+  --dur-instant:0ms; --dur-fast:120ms; --dur-base:160ms; --dur-slow:240ms;
+  --dur-sheet:280ms; --dur-slower:400ms;
+  --ease-standard:cubic-bezier(.2,0,0,1);
+  --ease-out:cubic-bezier(.05,.7,.1,1);
+  --ease-in:cubic-bezier(.3,0,.8,.15);
+  --ease-inout:cubic-bezier(.65,0,.35,1);
+  --ease-spring:cubic-bezier(.34,1.26,.64,1);
+
+  /* ---- 1.14 Z-INDEX ---- */
+  --z-base:0; --z-sticky:100; --z-dropdown:200; --z-sheet:300;
+  --z-modal:400; --z-toast:500; --z-tooltip:600;
+
+  /* ---- 1.15 CONTROL SIZING (density-aware, see [data-density]) ---- */
+  --ctl-h-xs:24px; --ctl-h-sm:28px; --ctl-h-md:32px; --ctl-h-lg:40px;
+  --ctl-px-xs:8px; --ctl-px-sm:10px; --ctl-px-md:12px; --ctl-px-lg:16px;
+  --ctl-gap:6px;
+  --row-h:36px;
+  --field-gap-y:14px; --field-gap-x:16px; --label-gap:6px;
+  --section-gap:28px;
+  --sidebar-w:216px; --sheet-w:520px; --modal-w:560px;
+}
+
+[data-density="compact"] {
+  --ctl-h-xs:22px; --ctl-h-sm:26px; --ctl-h-md:28px; --ctl-h-lg:34px;
+  --ctl-px-md:10px; --ctl-px-lg:12px;
+  --row-h:30px; --field-gap-y:10px; --field-gap-x:12px; --label-gap:4px; --section-gap:20px;
+}
+[data-density="relaxed"] {
+  --ctl-h-xs:26px; --ctl-h-sm:32px; --ctl-h-md:36px; --ctl-h-lg:44px;
+  --ctl-px-md:14px; --ctl-px-lg:18px;
+  --row-h:44px; --field-gap-y:18px; --field-gap-x:20px; --label-gap:8px; --section-gap:36px;
+}
+
+/* ============================ DARK ============================ */
+[data-theme="dark"] {
+  --bg-canvas:var(--gray-975);
+  --bg-surface:var(--gray-950);
+  --bg-raised:var(--gray-925);
+  --bg-sunken:var(--gray-1000);
+  --bg-subtle:var(--gray-925);
+  --bg-muted:var(--gray-900);
+  --bg-hover:var(--gray-900);
+  --bg-active:var(--gray-850);
+  --bg-selected:var(--brand-950);
+  --bg-disabled:var(--gray-925);
+  --bg-overlay:rgb(3 4 6 / .64);
+  --bg-tooltip:var(--gray-800);
+
+  --fg-default:var(--gray-100);
+  --fg-strong:var(--gray-0);
+  --fg-muted:var(--gray-400);
+  --fg-subtle:var(--gray-500);
+  --fg-placeholder:var(--gray-500);
+  --fg-disabled:var(--gray-600);
+  --fg-on-solid:var(--gray-0);
+  --fg-on-tooltip:var(--gray-50);
+  --fg-link:var(--brand-300);
+  --fg-link-hover:var(--brand-200);
+
+  --border-subtle:var(--gray-925);
+  --border-default:var(--gray-900);
+  --border-strong:var(--gray-850);
+  --border-input:var(--gray-650);  /* 3.34:1 on --bg-surface */
+  --border-hover:var(--gray-550);
+  --border-disabled:var(--gray-900);
+
+  --accent-solid:var(--brand-500);
+  --accent-solid-hover:var(--brand-400);
+  --accent-solid-active:var(--brand-300);
+  --accent-fg:var(--gray-0);
+  --accent-subtle:var(--brand-950);
+  --accent-subtle-hover:var(--brand-900);
+  --accent-border:var(--brand-900);
+  --accent-text:var(--brand-300);
+  --accent-ring:rgb(106 156 251 / .36);
+
+  --success-solid:var(--success-500); --success-fg:var(--gray-1000);
+  --success-subtle:var(--success-950); --success-border:var(--success-900); --success-text:var(--success-300);
+  --warning-solid:var(--warning-400); --warning-fg:var(--gray-1000);
+  --warning-subtle:var(--warning-950); --warning-border:var(--warning-900); --warning-text:var(--warning-300);
+  --danger-solid:var(--danger-500);   --danger-fg:var(--gray-0);
+  --danger-subtle:var(--danger-950);  --danger-border:var(--danger-900);  --danger-text:var(--danger-300);
+  --info-solid:var(--info-500);       --info-fg:var(--gray-1000);
+  --info-subtle:var(--info-950);      --info-border:var(--info-900);      --info-text:var(--info-300);
+
+  --shadow-1:0 1px 2px 0 rgb(0 0 0 / .40), 0 1px 3px 0 rgb(0 0 0 / .30);
+  --shadow-2:0 2px 4px -1px rgb(0 0 0 / .44), 0 6px 14px -3px rgb(0 0 0 / .50);
+  --shadow-3:0 6px 12px -3px rgb(0 0 0 / .50), 0 18px 36px -10px rgb(0 0 0 / .60);
+  --shadow-4:0 10px 20px -6px rgb(0 0 0 / .56), 0 32px 64px -18px rgb(0 0 0 / .70);
+  --focus-ring:0 0 0 2px var(--bg-surface), 0 0 0 4px var(--brand-400);
+  --focus-ring-danger:0 0 0 2px var(--bg-surface), 0 0 0 4px var(--danger-400);
+  --focus-ring-inset:inset 0 0 0 1px var(--brand-400), 0 0 0 3px var(--accent-ring);
+}
+
+/* ---- resets ---- */
+*, *::before, *::after { box-sizing:border-box; }
+html, body { margin:0; padding:0; background:var(--bg-canvas); }
+body {
+  font-family:var(--font-sans);
+  /* Hangul: never break inside a word; wrap at spaces / eojeol boundaries */
+  word-break:keep-all; overflow-wrap:anywhere; text-wrap:pretty;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  font-feature-settings:"tnum" 0;
+}
+a { color:var(--fg-link); text-decoration:none; text-underline-offset:2px; }
+a:hover { color:var(--fg-link-hover); text-decoration:underline; }
+button, input, select, textarea { font:inherit; color:inherit; }
+::selection { background:var(--accent-subtle-hover); color:var(--accent-text); }
+:focus-visible { outline:none; }
+::-webkit-scrollbar { width:10px; height:10px; }
+::-webkit-scrollbar-thumb { background:var(--gray-400); border-radius:99px; border:3px solid transparent; background-clip:content-box; }
+[data-theme="dark"] ::-webkit-scrollbar-thumb { background:var(--gray-800); background-clip:content-box; }
+
+@keyframes nx-shimmer { 0%{background-position:-160% 0} 100%{background-position:160% 0} }
+@keyframes nx-spin { to { transform:rotate(360deg) } }
+@keyframes nx-fade-in { from{opacity:0} to{opacity:1} }
+@keyframes nx-modal-in { from{opacity:0; transform:translateY(8px) scale(.985)} to{opacity:1; transform:none} }
+@keyframes nx-sheet-in { from{transform:translateX(100%)} to{transform:none} }
+@keyframes nx-toast-in { from{opacity:0; transform:translateY(10px) scale(.97)} to{opacity:1; transform:none} }
+@keyframes nx-tip-in { from{opacity:0; transform:translateY(3px)} to{opacity:1; transform:none} }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
+}

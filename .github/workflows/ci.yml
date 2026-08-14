@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 검증 (lint → typecheck → test)
+        run: npm run verify
+
+      - name: 포맷 확인
+        run: npm run format:check
+
+      - name: 프로덕션 빌드
+        run: npm run build

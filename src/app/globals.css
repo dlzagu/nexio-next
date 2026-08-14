@@ -1,0 +1,831 @@
+@import "tailwindcss";
+
+/* Pretendard — SIL OFL 1.1, 셀프호스팅(node_modules 안의 woff2 를 번들이 가져간다).
+   dynamic-subset 은 92조각으로 나뉘어 있어 실제로 쓰인 글자 범위만 내려받는다
+   (전체 variable 2.0MB 를 한 번에 받지 않는다). 원격 참조가 없어 사내망·오프라인에서도 동작한다. */
+@import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
+
+/* 디자인 시스템 토큰 (docs/design/tokens.css 의 복사본 — 손으로 고치지 않는다) */
+@import "./tokens.css";
+
+/* 🔴 토큰 오버라이드 — tokens.css 를 직접 고치지 않기 위한 예외 구획.
+   여기 있는 값은 다음 디자인 시스템 추출 때 정본(docs/design/tokens.css)에 반영해야 한다.
+
+   --font-sans: 원래 스택은 -apple-system 을 앞에 두어 macOS 에서 Pretendard 가 절대
+   선택되지 않았고, Windows 에서는 한글이 맑은 고딕으로 떨어졌다(실측 확인).
+   폰트를 번들에 포함했으므로 Pretendard 를 최우선으로 올려 OS 간 렌더를 통일한다. */
+:root,
+[data-theme="light"],
+[data-theme="dark"] {
+  --font-sans:
+    "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    "Apple SD Gothic Neo", "Segoe UI", "Malgun Gothic", "맑은 고딕",
+    "Noto Sans KR", sans-serif;
+}
+
+/* ============================================================
+   토큰 → Tailwind 유틸리티 노출
+   `inline` 이라 생성된 유틸이 var() 를 그대로 참조한다 →
+   [data-theme="dark"] 가 바뀌면 유틸도 함께 바뀐다.
+   ============================================================ */
+@theme inline {
+  --color-canvas: var(--bg-canvas);
+  --color-surface: var(--bg-surface);
+  --color-raised: var(--bg-raised);
+  --color-sunken: var(--bg-sunken);
+  --color-subtle: var(--bg-subtle);
+  --color-muted: var(--bg-muted);
+  --color-hover: var(--bg-hover);
+  --color-active: var(--bg-active);
+  --color-selected: var(--bg-selected);
+
+  --color-fg: var(--fg-default);
+  --color-fg-strong: var(--fg-strong);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-fg-disabled: var(--fg-disabled);
+  --color-fg-on-solid: var(--fg-on-solid);
+
+  --color-line-subtle: var(--border-subtle);
+  --color-line: var(--border-default);
+  --color-line-strong: var(--border-strong);
+  --color-line-input: var(--border-input);
+
+  --color-accent: var(--accent-solid);
+  --color-accent-text: var(--accent-text);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-accent-border: var(--accent-border);
+
+  --color-success: var(--success-solid);
+  --color-success-text: var(--success-text);
+  --color-success-subtle: var(--success-subtle);
+  --color-success-border: var(--success-border);
+  --color-warning: var(--warning-solid);
+  --color-warning-text: var(--warning-text);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-warning-border: var(--warning-border);
+  --color-danger: var(--danger-solid);
+  --color-danger-text: var(--danger-text);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-danger-border: var(--danger-border);
+  --color-info: var(--info-solid);
+  --color-info-text: var(--info-text);
+  --color-info-subtle: var(--info-subtle);
+  --color-info-border: var(--info-border);
+
+  /* ⚠️ --font-sans: var(--font-sans) 는 자기참조라 무효값이 된다.
+     본문 폰트는 tokens.css 의 reset(body{font-family:var(--font-sans)})이 담당하므로
+     여기서 다시 선언하지 않는다. */
+
+  --text-11: var(--fs-11);
+  --text-11--line-height: var(--lh-11);
+  --text-12: var(--fs-12);
+  --text-12--line-height: var(--lh-12);
+  --text-13: var(--fs-13);
+  --text-13--line-height: var(--lh-13);
+  --text-14: var(--fs-14);
+  --text-14--line-height: var(--lh-14);
+  --text-15: var(--fs-15);
+  --text-15--line-height: var(--lh-15);
+  --text-16: var(--fs-16);
+  --text-16--line-height: var(--lh-16);
+  --text-18: var(--fs-18);
+  --text-18--line-height: var(--lh-18);
+  --text-20: var(--fs-20);
+  --text-20--line-height: var(--lh-20);
+  --text-24: var(--fs-24);
+  --text-24--line-height: var(--lh-24);
+  --text-30: var(--fs-30);
+  --text-30--line-height: var(--lh-30);
+
+  --radius-xs: var(--r-xs);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+  --radius-2xl: var(--r-2xl);
+
+  --shadow-1: var(--shadow-1);
+  --shadow-2: var(--shadow-2);
+  --shadow-3: var(--shadow-3);
+  --shadow-4: var(--shadow-4);
+}
+
+/* ============================================================
+   LAYER 2 — 컴포넌트
+   styleguide.html 의 인라인 스펙을 클래스로 고정한 것.
+   수치를 직접 바꾸지 말고 토큰을 바꿔라.
+   ============================================================ */
+
+/* ---- Button ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ctl-gap);
+  height: var(--ctl-h-md);
+  padding: 0 var(--ctl-px-md);
+  border-radius: var(--r-sm);
+  border: var(--bw-hair) solid transparent;
+  font-size: var(--fs-13);
+  letter-spacing: var(--ls-13);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.btn:disabled {
+  cursor: not-allowed;
+  background: var(--bg-disabled);
+  color: var(--fg-disabled);
+  border-color: var(--border-disabled);
+}
+.btn-sm {
+  height: var(--ctl-h-sm);
+  padding: 0 var(--ctl-px-sm);
+  font-size: var(--fs-12);
+}
+.btn-xs {
+  height: var(--ctl-h-xs);
+  padding: 0 var(--ctl-px-xs);
+  font-size: var(--fs-11);
+}
+.btn-lg {
+  height: var(--ctl-h-lg);
+  padding: 0 var(--ctl-px-lg);
+  font-size: var(--fs-14);
+}
+.btn-primary {
+  background: var(--accent-solid);
+  color: var(--accent-fg);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-solid-hover);
+}
+.btn-primary:active:not(:disabled) {
+  background: var(--accent-solid-active);
+}
+.btn-outline {
+  background: var(--bg-surface);
+  color: var(--fg-default);
+  border-color: var(--border-default);
+}
+.btn-outline:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--fg-muted);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg-default);
+}
+.btn-danger {
+  background: var(--danger-solid);
+  color: var(--danger-fg);
+}
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.btn-danger-soft {
+  background: var(--danger-subtle);
+  color: var(--danger-text);
+  border-color: var(--danger-border);
+}
+.btn-danger-soft:hover:not(:disabled) {
+  filter: brightness(0.97);
+}
+.btn-icon {
+  width: var(--ctl-h-md);
+  padding: 0;
+}
+.btn-icon.btn-sm {
+  width: var(--ctl-h-sm);
+}
+.btn-icon.btn-xs {
+  width: var(--ctl-h-xs);
+}
+
+/* ---- Input / Select / Textarea ---- */
+.input {
+  width: 100%;
+  height: var(--ctl-h-md);
+  padding: 0 var(--ctl-px-md);
+  background: var(--bg-surface);
+  color: var(--fg-default);
+  border: var(--bw-hair) solid var(--border-input);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-13);
+  letter-spacing: var(--ls-13);
+  transition: border-color var(--dur-fast) var(--ease-standard);
+}
+.input::placeholder {
+  color: var(--fg-placeholder);
+}
+.input:hover:not(:disabled) {
+  border-color: var(--border-hover);
+}
+.input:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-color: var(--accent-solid);
+}
+.input:disabled {
+  background: var(--bg-disabled);
+  color: var(--fg-disabled);
+  cursor: not-allowed;
+}
+.input[aria-invalid="true"] {
+  border-color: var(--danger-solid);
+}
+.input[aria-invalid="true"]:focus-visible {
+  box-shadow: var(--focus-ring-danger);
+}
+textarea.input {
+  height: auto;
+  min-height: 96px;
+  padding: var(--sp-8) var(--ctl-px-md);
+  line-height: var(--lh-14);
+  resize: vertical;
+}
+select.input {
+  appearance: none;
+  padding-right: 28px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 15px) calc(50% + 1px),
+    calc(100% - 10px) calc(50% + 1px);
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+}
+
+/* ---- Label / Field ---- */
+.label {
+  display: block;
+  margin-bottom: var(--label-gap);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  color: var(--fg-muted);
+}
+.label-req::after {
+  content: " *";
+  color: var(--danger-solid);
+}
+.field-error {
+  margin-top: var(--sp-4);
+  font-size: var(--fs-11);
+  color: var(--danger-text);
+}
+.field-hint {
+  margin-top: var(--sp-4);
+  font-size: var(--fs-11);
+  color: var(--fg-subtle);
+}
+
+/* ---- Card ---- */
+.card {
+  background: var(--bg-surface);
+  border: var(--bw-hair) solid var(--border-default);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
+}
+.card-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-8);
+  padding: var(--sp-12) var(--sp-16);
+  border-bottom: var(--bw-hair) solid var(--border-subtle);
+}
+.card-ti {
+  font-size: var(--fs-13);
+  font-weight: var(--fw-semibold);
+  color: var(--fg-strong);
+}
+.card-bd {
+  padding: var(--sp-16);
+}
+
+/* ---- Badge — 색만으로 구분하지 않는다 (도형 병행) ---- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--r-xs);
+  font-size: var(--fs-11);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+.badge-dot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  background: currentColor;
+}
+.badge-neutral {
+  background: var(--bg-muted);
+  color: var(--fg-muted);
+}
+.badge-accent {
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+.badge-success {
+  background: var(--success-subtle);
+  color: var(--success-text);
+}
+.badge-warning {
+  background: var(--warning-subtle);
+  color: var(--warning-text);
+}
+.badge-danger {
+  background: var(--danger-subtle);
+  color: var(--danger-text);
+}
+.badge-info {
+  background: var(--info-subtle);
+  color: var(--info-text);
+}
+
+/* ---- Table (밀도 우선) ---- */
+.tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.tbl th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-subtle);
+  border-bottom: var(--bw-hair) solid var(--border-default);
+  padding: 0 var(--sp-10);
+  height: 34px;
+  text-align: left;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.tbl td {
+  height: var(--row-h);
+  padding: 0 var(--sp-10);
+  border-bottom: var(--bw-hair) solid var(--border-subtle);
+  font-size: var(--fs-13);
+  letter-spacing: var(--ls-13);
+  color: var(--fg-default);
+}
+.tbl tbody tr {
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+.tbl tbody tr:hover {
+  background: var(--bg-hover);
+}
+.tbl tbody tr[data-selected="true"] {
+  background: var(--bg-selected);
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.ell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Tabs ---- */
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  border-bottom: var(--bw-hair) solid var(--border-default);
+}
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-6);
+  height: 36px;
+  padding: 0 var(--sp-12);
+  font-size: var(--fs-13);
+  font-weight: var(--fw-medium);
+  color: var(--fg-subtle);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+.tab:hover {
+  color: var(--fg-default);
+}
+.tab[data-state="active"] {
+  color: var(--accent-text);
+}
+.tab[data-state="active"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 -1px 0;
+  height: 2px;
+  background: var(--accent-solid);
+  border-radius: 2px 2px 0 0;
+}
+.tab:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--r-xs);
+}
+
+/* ---- Segmented (뷰 전환) ---- */
+.seg {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--bg-sunken);
+  border-radius: var(--r-md);
+}
+.seg-i {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-6);
+  height: 28px;
+  padding: 0 var(--sp-12);
+  border-radius: var(--r-sm);
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+.seg-i:hover {
+  color: var(--fg-default);
+}
+.seg-i[data-state="active"] {
+  background: var(--bg-surface);
+  color: var(--fg-strong);
+  box-shadow: var(--shadow-1);
+}
+.seg-i:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ---- Sheet / Modal ---- */
+.ovl {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  background: var(--bg-overlay);
+  animation: nx-fade-in var(--dur-base) var(--ease-out);
+}
+/* 상세 시트 폭.
+   tokens.css 의 --sheet-w(520px)는 이 화면에 좁다 — 처리결과 탭이 텍스트 7필드 +
+   시간정산을 담기 때문. 토큰 파일은 손대지 않고(정본 = docs/design/tokens.css)
+   여기서 화면용 폭을 따로 정의한다. 사용자는 헤더의 확장 버튼으로 3단계를 오간다. */
+:root {
+  --sheet-w-md: 1040px;
+  --sheet-w-lg: 1440px;
+}
+
+.sheet {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: var(--z-sheet);
+  display: flex;
+  flex-direction: column;
+  width: min(var(--sheet-w-md), 100vw);
+  background: var(--bg-surface);
+  border-left: var(--bw-hair) solid var(--border-default);
+  box-shadow: var(--shadow-4);
+  animation: nx-sheet-in var(--dur-sheet) var(--ease-out);
+  transition: width var(--dur-base) var(--ease-standard);
+}
+.sheet[data-width="sm"] {
+  width: min(var(--sheet-w), 100vw);
+}
+.sheet[data-width="lg"] {
+  width: min(var(--sheet-w-lg), 100vw);
+}
+.sheet[data-width="full"] {
+  width: 100vw;
+}
+.modal {
+  position: fixed;
+  z-index: var(--z-modal);
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: min(var(--modal-w), calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-4);
+  animation: nx-modal-in var(--dur-base) var(--ease-out);
+}
+
+/* ---- Stepper (P5: 상태를 형태로) ---- */
+.stp {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+  row-gap: var(--sp-8);
+}
+.stp-i {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  flex: none;
+}
+.stp-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: var(--r-full);
+  font-size: var(--fs-11);
+  font-weight: var(--fw-semibold);
+  border: 1.5px solid var(--border-strong);
+  color: var(--fg-subtle);
+  background: var(--bg-surface);
+}
+.stp-l {
+  font-size: var(--fs-12);
+  color: var(--fg-subtle);
+  white-space: nowrap;
+}
+.stp-bar {
+  width: 18px;
+  height: 1.5px;
+  margin: 0 var(--sp-8);
+  flex: none;
+  background: var(--border-default);
+}
+.stp-i[data-state="done"] .stp-n {
+  background: var(--success-subtle);
+  border-color: var(--success-border);
+  color: var(--success-text);
+}
+.stp-i[data-state="done"] .stp-l {
+  color: var(--fg-muted);
+}
+.stp-i[data-state="current"] .stp-n {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+  color: var(--accent-fg);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.stp-i[data-state="current"] .stp-l {
+  color: var(--accent-text);
+  font-weight: var(--fw-semibold);
+}
+.stp-i[data-state="cancelled"] .stp-n {
+  background: var(--danger-subtle);
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+}
+.stp-i[data-state="cancelled"] .stp-l {
+  color: var(--danger-text);
+  font-weight: var(--fw-semibold);
+}
+
+/* 목록용 미니 스테퍼 — 5칸 게이지 */
+.mstp {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+.mstp-s {
+  width: 11px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-default);
+}
+.mstp-s[data-on="true"] {
+  background: var(--accent-solid);
+}
+.mstp-s[data-tone="success"][data-on="true"] {
+  background: var(--success-solid);
+}
+.mstp-s[data-tone="danger"][data-on="true"] {
+  background: var(--danger-solid);
+}
+
+/* ---- Skeleton ---- */
+.skel {
+  border-radius: var(--r-sm);
+  background: linear-gradient(
+    90deg,
+    var(--bg-muted) 25%,
+    var(--bg-active) 37%,
+    var(--bg-muted) 63%
+  );
+  background-size: 400% 100%;
+  animation: nx-shimmer 1.4s ease-in-out infinite;
+}
+
+/* ---- Chip / Token input ---- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+  height: 24px;
+  padding: 0 var(--sp-4) 0 var(--sp-8);
+  border-radius: var(--r-full);
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+  border: var(--bw-hair) solid var(--accent-border);
+  font-size: var(--fs-12);
+}
+.chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.chip-x:hover {
+  background: var(--accent-subtle-hover);
+}
+.tokenbox {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  min-height: var(--ctl-h-md);
+  padding: var(--sp-4) var(--sp-6);
+  background: var(--bg-surface);
+  border: var(--bw-hair) solid var(--border-input);
+  border-radius: var(--r-sm);
+}
+.tokenbox:focus-within {
+  box-shadow: var(--focus-ring);
+  border-color: var(--accent-solid);
+}
+.tokenbox input {
+  flex: 1;
+  min-width: 100px;
+  height: 22px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: var(--fs-13);
+}
+
+/* ---- 리치 텍스트 (기존 HTML 렌더) ---- */
+.prose-nx {
+  font-size: var(--fs-13);
+  line-height: var(--lh-14);
+  color: var(--fg-default);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.prose-nx p {
+  margin: 0 0 var(--sp-8);
+}
+.prose-nx p:last-child {
+  margin-bottom: 0;
+}
+.prose-nx ul,
+.prose-nx ol {
+  margin: 0 0 var(--sp-8);
+  padding-left: 20px;
+}
+.prose-nx ul {
+  list-style: disc;
+}
+.prose-nx ol {
+  list-style: decimal;
+}
+.prose-nx a {
+  text-decoration: underline;
+}
+.prose-nx img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--r-sm);
+}
+.prose-nx table {
+  border-collapse: collapse;
+  margin: var(--sp-8) 0;
+  font-size: var(--fs-12);
+}
+.prose-nx th,
+.prose-nx td {
+  border: 1px solid var(--border-default);
+  padding: var(--sp-4) var(--sp-8);
+}
+.prose-nx pre {
+  padding: var(--sp-8);
+  background: var(--bg-sunken);
+  border-radius: var(--r-sm);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+}
+.prose-nx code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+.prose-nx blockquote {
+  margin: var(--sp-8) 0;
+  padding-left: var(--sp-12);
+  border-left: 2px solid var(--border-strong);
+  color: var(--fg-muted);
+}
+
+/* ---- 리치 텍스트 에디터 (Tiptap) ---- */
+.nx-editor {
+  background: var(--bg-surface);
+  border: var(--bw-hair) solid var(--border-input);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  transition: border-color var(--dur-fast) var(--ease-standard);
+}
+.nx-editor:hover {
+  border-color: var(--border-hover);
+}
+.nx-editor:focus-within {
+  border-color: var(--accent-solid);
+  box-shadow: var(--focus-ring);
+}
+.nx-editor[data-disabled="true"] {
+  background: var(--bg-disabled);
+}
+.nx-editor-body {
+  min-height: var(--nx-editor-min, 120px);
+  padding: var(--sp-8) var(--ctl-px-md);
+  outline: none;
+}
+/* Placeholder 확장이 붙이는 속성 */
+.nx-editor-body p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--fg-placeholder);
+}
+.nx-editor-body h3 {
+  font-size: var(--fs-15);
+  font-weight: var(--fw-semibold);
+  margin: var(--sp-8) 0 var(--sp-4);
+}
+.nx-editor-body h4 {
+  font-size: var(--fs-14);
+  font-weight: var(--fw-semibold);
+  margin: var(--sp-8) 0 var(--sp-4);
+}
+
+/* ---- 스크롤 / 네비 ---- */
+.scroll-y {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.nav-i {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-10);
+  height: 34px;
+  padding: 0 var(--sp-10);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-13);
+  font-weight: var(--fw-medium);
+  color: var(--fg-muted);
+}
+.nav-i:hover {
+  background: var(--bg-hover);
+  color: var(--fg-default);
+  text-decoration: none;
+}
+.nav-i[data-active="true"] {
+  background: var(--bg-selected);
+  color: var(--accent-text);
+}

@@ -1,0 +1,4 @@
+# 저장소 줄바꿈은 LF 로 통일한다.
+# 이게 없으면 Windows 의 core.autocrlf=true 가 체크아웃 시 CRLF 로 바꿔버리고,
+# prettier(endOfLine 기본값 "lf")가 전 파일을 "Delete ␍" 로 떨궈 npm run verify 가 깨진다.
+* text=auto eol=lf

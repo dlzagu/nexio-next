@@ -1,0 +1,61 @@
+﻿# ADR-0004: 사이드 프로젝트로 전환 — 자체 SQLite + 가상 시드 데이터
+
+- 날짜: 2026-08-14
+- 상태: 채택 (ADR-0002 를 대체한다. ADR-0001 의 Spring 릴레이 목표는 폐기 — 역사 기록으로만 유지)
+
+## 맥락 (왜 이 결정이 필요했나)
+
+이 프로젝트의 목적이 바뀌었다 — **사내 시스템의 운영 대체가 아니라, "사내에서 이런 것을
+만들었다"를 보여주는 포트폴리오**가 되었다 (2026-08-14 사용자 결정). 그에 따라:
+
+1. 회사 개발 DB(원본 개발 스키마)를 계속 읽을 수 없다 — 실고객사 데이터가 화면에 노출된다.
+2. 공개 배포(Vercel)와 자동 CI/CD 가 필요하다.
+3. 클론한 사람이 계정·VPN·환경변수 없이 바로 실행할 수 있어야 한다.
+
+## 결정
+
+`src/lib/db.ts` 를 **SQLite(better-sqlite3) + 결정적 시드 생성기**로 교체한다.
+ADR-0002 가 예고한 대로 교체 대상은 `src/lib/data/` 아래 계층 하나이며, 화면·타입·권한
+코드는 손대지 않았다.
+
+- **스키마는 원본 형태 유지** — 테이블·컬럼명을 그대로 재현(사용 부분집합)해서
+  `src/lib/data/*` 의 쿼리 구조가 보존된다 (`src/lib/dev-seed/schema.ts`).
+- **시드는 전부 가상** — 고객사 8곳·인물 18명·티켓 ~2,250건·댓글·공지 전부 창작 데이터
+  (`src/lib/dev-seed/corpus.ts`). 실측 프로파일의 **모양만** 재현한다: 이관분 과반,
+  비공개 다수, 상태 7/8/10 = 0건, 빈 제목, 이스케이프 저장 HTML, 1900-01-01 이상치.
+- **자동 시드** — 로컬은 `.data/nexio.db` 파일(첫 접속 때 생성, `npm run db:reset` 로 재생성),
+  서버리스(Vercel)는 파일시스템이 read-only 라 `:memory:` 에 콜드스타트마다 즉석 시드.
+  덕분에 배포 환경변수가 0개다.
+- **read-only 계약 유지** — `select()` 의 SELECT/WITH 강제, `ALLOW_DEV_WRITES` 기본 차단은
+  그대로다. 쓰기 경로(P6.s4)는 이제 자체 DB 라 Spring 없이 구현 가능해졌다.
+- **페르소나 전면 교체** — 실계정 3종 → 가상 인물 4종(내부·고객사 승인권자·고객사 일반·
+  외부업체). 권한 모델의 네 축을 모두 체험할 수 있다.
+
+## 결과 (트레이드오프)
+
+- **얻는 것**: 클론 → `npm install` → `npm run dev` 로 끝. 통합 테스트가 실 DB(:memory:)로
+  돌게 되어 scopeClause fail-closed 를 테스트 11개로 증명한다. 배포·CI 에 시크릿이 없다.
+- **포기하는 것**: 실데이터가 드러내던 예측 불가능한 이상치(ADR-0002 의 발견 4건 같은)는
+  더 이상 새로 나오지 않는다 — 대신 이미 발견한 이상치를 시드가 재현하도록 고정했다.
+- **주의**: 서버리스 `:memory:` 는 인스턴스마다 독립이라, 쓰기 경로를 구현해도 배포 데모에서는
+  저장이 인스턴스 수명만큼만 유지된다. 데모 목적상 허용 — 영속이 필요해지면 Turso/Postgres 로
+  교체하되, 그때도 교체 대상은 `src/lib/db.ts` 하나다.
+
+## 검토한 대안
+
+- **호스티드 Postgres (Supabase/Neon)** — 탈락: 계정·프로젝트·환경변수·시드 배포 절차가 생긴다.
+  "클론 즉시 실행"과 "환경변수 0개 배포"를 둘 다 잃는다. 목데이터 쇼케이스에 과한 인프라.
+- **Node 내장 `node:sqlite`** — 탈락: Node 22.5+ 를 요구해 클론 환경을 탄다.
+  better-sqlite3 는 Node 20/22/24 프리빌드가 있고 API 가 동일 수준으로 단순하다.
+- **DB 없이 JSON 픽스처** — 탈락: SQL 계층(`src/lib/data/*`)을 통째로 버리게 된다.
+  "지금 구조를 유지한다"는 요구와 충돌하고, 쿼리·집계·페이징이 전부 재작성된다.
+
+## 전환 체크리스트 (완료)
+
+- [x] `mssql`/`@types/mssql` 제거, `better-sqlite3` 도입 (`serverExternalPackages` 갱신)
+- [x] T-SQL → SQLite 방언 변환 (ISNULL→COALESCE, TOP→LIMIT, OFFSET/FETCH→LIMIT OFFSET,
+      DATEADD/GETDATE→date(), FORMAT→strftime, DATEDIFF→julianday)
+- [x] `DB_*` 환경변수 제거 — 필수 환경변수 0개 (`SQLITE_PATH` 는 선택)
+- [x] 실계정 페르소나·실고객사명 코드에서 제거 (docs/ 는 별도 익명화 필요 — progress 참조)
+- [x] 통합 테스트 추가 (`tests/data-scope.test.ts`) — 시드 불변식 + fail-closed + 대시보드 집계
+- [x] GitHub Actions CI (`.github/workflows/ci.yml`) + README
