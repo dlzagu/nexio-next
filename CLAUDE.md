@@ -90,6 +90,9 @@ DB 교체 시 수정 대상은 `src/lib/db.ts` 하나다. 쓰기는 `ALLOW_DEV_W
 | "내 건"을 항상 `SUCCERSON` 으로 조회 | 고객사=`CUSTPERSON` / 처리자=`SUCCERSON` | 역할을 구분하지 않으면 고객사 대시보드 카드가 늘 0 이다 |
 | `OKREMARKS` 를 분리 필드와 함께 렌더 | 분리 필드가 있으면 감춘다 | `OKREMARKS` 는 원인·답변·결과를 이어 붙인 레거시 요약이라 내용이 두 번 나온다 |
 | `useEffect` 안에서 동기 `setState` 로 상태 초기화 | 키를 함께 담아 **파생값으로 읽기** | 연쇄 렌더를 만든다. eslint `react-hooks/set-state-in-effect` 가 잡는다 |
+| 의존성 추가·제거 후 lock 을 그대로 커밋 | `npm run lock:fix` 를 돌리고 커밋 | Windows npm 이 wasm32-wasi optional 하위 의존성(`@emnapi/*`)을 lock 에 안 적어 Linux CI 의 `npm ci` 가 멈춘다. `npm install` 이 매번 다시 지운다 |
+| 서버에서 도는 코드에 DOM 의존 라이브러리(DOMPurify+jsdom 등) | DOM 없는 순수 파서 (`xss`) | jsdom 의 동적 require 가 서버리스 번들에 안 담겨 SSR 이 통째로 500. 클라이언트 컴포넌트의 SSR 번들이라 `serverExternalPackages` 로도 못 뺀다 |
+| 저장된 날짜를 `toISOString()` 으로 절대시각화 | `toWallClockIso()` — 타임존 표기 없이 | 저장값이 타임존 없는 벽시계라, 서버(UTC)와 브라우저(KST)가 하루 다른 날짜를 그려 하이드레이션이 깨진다 (React #418) |
 
 ## 참고 문서 (필요할 때만 로드)
 

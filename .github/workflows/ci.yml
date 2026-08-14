@@ -16,6 +16,8 @@ jobs:
           node-version: 24
           cache: npm
 
+      # Windows 에서 만든 lock 은 wasm32-wasi 하위 의존성이 빠져 여기서 멈춘다.
+      # 멈추면 로컬에서 `npm run lock:fix` → 커밋 (scripts/sync-lock-wasm-deps.mjs 주석 참조)
       - name: 의존성 설치
         run: npm ci
 
