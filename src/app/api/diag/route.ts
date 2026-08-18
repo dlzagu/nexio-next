@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { getDashboard } from "@/lib/data/dashboard";
 import { getMeta } from "@/lib/data/meta";
 import { getTicket, listTickets } from "@/lib/data/tickets";
-import { dbHealth, devWritesAllowed, writeDisabledReason } from "@/lib/db";
+import {
+  dbHealth,
+  devWritesAllowed,
+  isSharedDb,
+  writeDisabledReason,
+} from "@/lib/db";
 import { currentUser } from "@/lib/session";
 import type { TicketFilters } from "@/lib/types";
 
@@ -31,6 +36,18 @@ export async function GET() {
   out.writes = devWritesAllowed()
     ? { allowed: true, note: "저장·액션·댓글·첨부가 실제로 기록된다" }
     : { allowed: false, note: writeDisabledReason() };
+
+  // 공유 DB 좌표가 **반쪽만** 들어오면 런타임에 401 이 난다 (URL 만 있고 토큰이 없는 경우).
+  // 값은 절대 찍지 않는다 — 존재 여부만.
+  if (isSharedDb()) {
+    out.shared = {
+      url: true,
+      token: !!process.env.TURSO_AUTH_TOKEN,
+      note: process.env.TURSO_AUTH_TOKEN
+        ? "공유 DB 좌표가 갖춰졌다"
+        : "TURSO_AUTH_TOKEN 이 없다 — 원격이 401 로 거절한다",
+    };
+  }
 
   const user = await currentUser();
   out.user = user
