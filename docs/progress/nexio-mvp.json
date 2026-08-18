@@ -680,10 +680,78 @@
           "name": "안전장치 — 같은 사고를 기계가 막게 한다",
           "status": "pending",
           "logic": [
+            "⚠️ 갱신(2026-08-18): 커밋 작성자 문제는 이력 재작성 때 mailmap 으로 전 커밋을 통일해 해소했다. 남은 건 \"새 클론에서 git config --local 이 없으면 재발\"뿐이라 README·ADR-0005 에 기록 한 줄이면 된다.",
             "커밋 작성자 게이트를 README·ADR-0005 에 기록 — 2026-08-18 배포 차단의 원인이었고, 해결책(git config --local user.email)이 클론에 따라오지 않아 다른 환경에서 재발한다. 증상은 'push·CI 는 green 인데 라이브만 옛 빌드'",
             "private-history 가 origin 으로 새는 경로를 훅으로 차단 — 지금은 사람 기억이 유일한 방벽이다(.git/config 에 해당 브랜치 추적 설정도 없다). ⛔ 이 브랜치와 커밋 2f5f81c·96062da 에 익명화 전 실 DB명·사명·사내 경로가 있다",
             "CI 에 런타임 스모크 추가 — 지금은 npm ci → verify → format:check → build 로 끝나 앱을 한 번도 실행하지 않는다. 이번 세션의 500(no such column NTT_CN)·하이드레이션 깨짐은 빌드로는 안 잡힌다. next start 후 주요 경로 HTTP 200 확인이면 충분",
             "라우트 핸들러 테스트 — 106개가 전부 lib 단위이고 권한을 실제로 집행하는 지점(라우트의 canDo 재판정·외부업체 신청 금지·소속 교차 조회)은 테스트가 0건이다"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P10",
+      "name": "포트폴리오 공개 준비 (2026-08-18)",
+      "status": "in_progress",
+      "depends_on": [
+        "P9"
+      ],
+      "description": "\"만든 것\"보다 \"보여지는 것\"이 병목이라는 진단에서 출발 — 코드를 볼 수 있게(공개·이력 정리), 화면을 볼 수 있게(스크린샷), 눌러볼 수 있게(라이브 쓰기).",
+      "steps": [
+        {
+          "id": "s1",
+          "name": "✅ 이력 익명화 재작성 — 로컬 완료, 원격 반영 대기",
+          "status": "blocked_on_user",
+          "logic": [
+            "public 전환 시점에 이력이 그대로여서 실 사명·개발 DB명·사내 절대경로·내부 Java 패키지가 공개돼 있었다(커밋 2개).",
+            "git filter-repo 3패스로 문자열만 치환 — squash 하지 않아 커밋 28개 서사가 남는다. 커밋 메시지도 함께.",
+            "작성자 이메일이 두 계정(21/8)으로 갈려 있던 것을 mailmap 으로 통일 — 기여 그래프 분리와 배포 게이트 재발을 같이 해소.",
+            "테이블 접두어(회사 이니셜) → NX_. 현재 트리 24파일 101건 + 이력 263건. SCHEMA_VERSION 4.",
+            "⚠️ 이력 치환이 그 변경을 설명한 문장까지 바꿔 자기모순이 생겼다 → 옛 접두어를 아예 언급하지 않는 문장으로 정리(문서에 남기면 지운 의미가 없다).",
+            "🔴 사용자: 원격 강제 갱신 1회 필요. 훅이 AI 의 강제 push 를 막는다 — 의도된 안전장치라 우회하지 않는다."
+          ],
+          "verify": [
+            "로컬 이력 스캔: 사명·실 DB명·사내 경로·내부 패키지·구 접두어 전부 0건(블롭·커밋 메시지)"
+          ]
+        },
+        {
+          "id": "s2",
+          "name": "✅ README 스크린샷 6장",
+          "status": "done",
+          "logic": [
+            "저장소에 이미지가 한 장도 없어 리뷰어의 첫 15초가 텍스트뿐이었다.",
+            "docs/screenshots/ 6장 + README 상단. scripts/screenshots.mjs 로 재촬영(의존성엔 넣지 않는다 — CI 가 매번 브라우저를 받는다).",
+            "테스트 티켓이 캡처에 잡혀 db:reset 후 재촬영. 상세 샷은 첨부·댓글 있는 건을 스크립트가 스스로 고른다."
+          ]
+        },
+        {
+          "id": "s3",
+          "name": "공유 DB(libSQL) — 코드 완료, 계정 연결은 사용자",
+          "status": "blocked_on_user",
+          "logic": [
+            "@libsql/client/web. SQLite 그 자체라 데이터 계층 쿼리가 한 줄도 안 바뀐다(Postgres 였다면 INSERT OR REPLACE·date(now,…)·GROUP BY bare column 이 깨진다).",
+            "write() 는 batch(…,\"write\") = 한 트랜잭션. 쓰기 허용은 저장소가 정한다(ADR-0009).",
+            "npm run db:seed:remote 가 로컬 DB 를 통째로 복사. 좌표는 .env.turso 로 분리 — .env.local 에 넣으면 로컬 개발까지 원격을 본다.",
+            "🔴 사용자: ① turso.tech 무료 DB ② .env.turso 2줄 ③ npm run db:seed:remote ④ Vercel 환경변수 2개 → 재배포."
+          ],
+          "verify": [
+            "/api/diag 의 db.mode = shared(libSQL) · writes.allowed = true"
+          ]
+        },
+        {
+          "id": "s4",
+          "name": "로컬 저장 켜기 (사용자 1줄)",
+          "status": "blocked_on_user",
+          "logic": [
+            ".env.local 에 ADR-0002 시절의 ALLOW_DEV_WRITES=false 가 남아 로컬도 202. 하네스가 .env* 를 보호해 AI 가 못 고친다."
+          ]
+        },
+        {
+          "id": "s5",
+          "name": "접근성·성능 측정 결과를 남긴다 (미착수)",
+          "status": "pending",
+          "logic": [
+            "키보드 대안·색 외 구분·대비는 구현했는데 측정 결과가 없다. Lighthouse + axe 리포트를 docs/ 에 남기고 README 에 수치 한 줄."
           ]
         }
       ]
@@ -709,8 +777,8 @@
     "canApproveRequest 를 서버가 어떤 규칙으로 계산하는지 — BFF 가 그대로 전달만 하면 되는지"
   ],
   "session_continuation": {
-    "next_step": "P9.s3",
-    "note": "✅ P9.s1·s2 완료(2026-08-18). s1 = 라이브 결함 4건(디버그 try/catch · 승인 게이트 fail-open · 상세 열람 시 읽음 처리 · 미읽음 축 통일). s2 = 첨부파일 구현(ADR-0008) · 대시보드 카드↔링크 일치 · 조용한 catch 제거 · 미사용 자산 정리. 테스트 124개 · build green. ▶ 다음은 P9.s3 — 문서 정합성이다. 가장 위험한 건 .claude/rules/bff.md: src/app/api/** 를 만질 때 **자동 주입**되는데 내용이 전부 Spring 시대(세션 쿠키 릴레이·redirect manual·302)라, 방치하면 매 세션 틀린 지침이 들어온다. 그 다음이 ARCHITECTURE.md 의 낡은 수치(테스트 개수·쓰기 미구현·isomorphic-dompurify)와 ADR-0001·0002 상태 헤더. ⚠️ 커밋 user.email 은 dlzagu 계정이어야 배포된다(git config --local 고정). ⛔ repo public 전환 금지(커밋 2f5f81c·96062da 에 익명화 전 실 DB명·사명·사내 경로). ⚠️ 시드 스키마 변경 시 SCHEMA_VERSION 올리고 개발 서버 재시작(현재 3). ⚠️ 의존성 변경 후 npm run lock:fix. 검증: npm run verify · npm run build · /api/diag · 쓰기는 launch.json 의 nexio-next-write 구성.",
+    "next_step": "P10.s1 (사용자 원격 반영 대기) → P9.s3",
+    "note": "✅ 2026-08-18 완료: P9.s1(라이브 결함 4건) · P9.s2(첨부 구현 + 반쪽 기능 정리) · P10.s2(스크린샷 6장) · 공유 DB 코드(ADR-0009) · 이력 익명화 재작성 + NX_ 접두어 통일. 테스트 128개 · build green · 재시드 후 주요 경로 전부 200. 🔴 사용자 대기 3건: ① 원격 강제 갱신 1회(28커밋 + 이력 재작성이 이 한 번에 반영된다 — 훅이 AI 를 막는다) ② Turso 4단계로 라이브 쓰기(ADR-0009 마지막 절) ③ .env.local 의 ALLOW_DEV_WRITES=false 한 줄 제거. ▶ AI 가 이어서 할 것: P9.s3 문서 정합성 — 특히 .claude/rules/bff.md 는 src/app/api/** 를 만질 때 자동 주입되는데 내용이 전부 Spring 시대라 매 세션 틀린 지침이 들어온다. 다음 P9.s4(라우트 핸들러 테스트 0건 · CI 가 앱을 한 번도 실행하지 않는다) → P10.s5(접근성·성능 측정). ⚠️ 시드 스키마 변경 시 SCHEMA_VERSION 올리고 개발 서버 재시작(현재 4). ⚠️ 의존성 변경 후 npm run lock:fix. ⚠️ 공유 DB 좌표는 .env.turso 에만.",
     "compact_after_each_step": true
   }
 }
