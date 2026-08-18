@@ -4,6 +4,7 @@ import { toDbStamp } from "../format";
 import { sanitize } from "../sanitize";
 import type { SolutionPatch } from "../schemas";
 import type { TicketAction, TicketDetail, User } from "../types";
+import { attachmentStatements, type IncomingFile } from "./attachments";
 import { composeBody, toParagraphs } from "./request-body";
 
 /**
@@ -201,7 +202,7 @@ export async function applyAction(opts: {
   user: User;
   action: TicketAction;
   solution?: SolutionPatch;
-  comment?: { body: string; adminOnly: boolean };
+  comment?: { body: string; adminOnly: boolean; files?: IncomingFile[] };
   reason?: string;
 }): Promise<ActionResult> {
   const { ticket, user, action, solution, comment, reason } = opts;
@@ -286,6 +287,17 @@ export async function applyAction(opts: {
         at: now,
       }),
     );
+    // 첨부는 댓글과 **같은 트랜잭션**에 실린다 — 따로 커밋하면 한쪽만 남는다
+    if (comment.files?.length) {
+      statements.push(
+        ...attachmentStatements({
+          echoNum: ticket.echoNum,
+          user,
+          files: comment.files,
+          at: now,
+        }),
+      );
+    }
     statements.push(touchReadState(ticket.echoNum, user.id));
   }
 
@@ -301,6 +313,7 @@ export async function addComment(opts: {
   user: User;
   body: string;
   adminOnly: boolean;
+  files?: IncomingFile[];
 }): Promise<void> {
   const at = toDbStamp();
   await write([
@@ -313,6 +326,12 @@ export async function addComment(opts: {
       progress: null,
       at,
     }),
+    ...attachmentStatements({
+      echoNum: opts.echoNum,
+      user: opts.user,
+      files: opts.files ?? [],
+      at,
+    }),
     touchReadState(opts.echoNum, opts.user.id),
   ]);
 }
@@ -320,6 +339,8 @@ export async function addComment(opts: {
 /* ── 신청 저장 ─────────────────────────────────────────────── */
 
 export interface NewRequestInput {
+  /** 첨부 파일 (검증은 attachmentStatements 안에서 한 번 더 한다) */
+  files?: IncomingFile[];
   custCode: string;
   requesterId: string;
   systemId: string;
@@ -423,6 +444,13 @@ export async function createTicket(
       adminOnly: false,
       isLog: true,
       progress,
+      at: now,
+    }),
+    // 신청과 첨부는 **같은 트랜잭션**이다 — 나눠 커밋하면 첨부 없는 신청이 남는다
+    ...attachmentStatements({
+      echoNum,
+      user,
+      files: input.files ?? [],
       at: now,
     }),
   ]);

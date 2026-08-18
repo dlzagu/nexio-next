@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_FILES, MAX_FILE_BYTES } from "./attachments";
 
 /**
  * 폼 검증과 BFF 응답 검증에 **같은 스키마**를 쓴다.
@@ -52,6 +53,29 @@ export const REQUIRED_ORDER: (keyof RequestFormParsed)[] = [
   "content",
 ];
 
+/**
+ * 첨부 전송 형태 — 파일 바이트를 base64 로 실어 **본문과 한 요청에** 보낸다.
+ * multipart 로 나누면 "신청은 저장됐는데 첨부만 실패"가 생긴다 (ADR-0008).
+ * 크기·형식의 최종 판정은 서버가 디코드한 실제 바이트로 다시 한다.
+ */
+export const attachmentInputSchema = z.object({
+  name: z.string().min(1).max(200),
+  mime: z.string().min(1).max(120),
+  // base64 는 원본의 약 4/3 — 여유를 두고 자른다 (여기서 막히면 페이로드 자체를 안 읽는다)
+  data: z
+    .string()
+    .min(1)
+    .max(Math.ceil(MAX_FILE_BYTES * 1.4)),
+});
+
+export const attachmentsInputSchema = z
+  .array(attachmentInputSchema)
+  .max(MAX_FILES)
+  .optional()
+  .default([]);
+
+export type AttachmentInput = z.output<typeof attachmentInputSchema>;
+
 export const commentSchema = z.object({
   echoNum: z.string().min(1),
   body: z.string().min(1, "댓글 내용을 입력해 주세요").max(4000),
@@ -82,6 +106,7 @@ export const actionSchema = z.object({
     .object({
       body: z.string().default(""),
       adminOnly: z.boolean().default(false),
+      attachments: attachmentsInputSchema,
     })
     .optional(),
   action: z.enum([

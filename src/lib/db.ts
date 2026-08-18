@@ -41,9 +41,15 @@ function db(): Database.Database {
 const READ_ONLY = /^\s*(?:select|with)\b/i;
 const WRITE_ONLY = /^\s*(?:insert|update)\b/i;
 
+/**
+ * 바인딩 값. Buffer 는 **첨부 파일 바이트(BLOB)** 전용이다 —
+ * 이 앱에서 문자열이 아닌 값을 DB 에 넣는 경로는 그것뿐이다.
+ */
+export type ParamValue = string | number | null | Buffer;
+
 export interface Param {
   name: string;
-  value: string | number | null;
+  value: ParamValue;
 }
 
 const stripComments = (sql: string) =>
@@ -51,7 +57,7 @@ const stripComments = (sql: string) =>
 
 /** 쿼리에 실제로 등장하는 파라미터만 바인딩한다 — 남는 바인딩은 드라이버가 거부한다 */
 function bindable(sql: string, params: Param[]) {
-  const bound: Record<string, string | number | null> = {};
+  const bound: Record<string, ParamValue> = {};
   for (const { name, value } of params) {
     if (new RegExp(`@${name}\\b`).test(sql)) bound[name] = value;
   }

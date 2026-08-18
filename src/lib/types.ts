@@ -126,6 +126,11 @@ export interface TicketFilters {
   module: string;
   priority: string;
   includeMigration: boolean;
+  /**
+   * 미읽음만. 대시보드 '미읽음 댓글' 카드가 이 필터로 들어온다 —
+   * 카드가 센 조건을 URL 로 넘길 수 없으면 숫자와 목록이 갈라진다.
+   */
+  unreadOnly?: boolean;
 }
 
 export interface TicketListResult {
@@ -169,4 +174,15 @@ export interface DashboardData {
   assigneePerf: { id: string; name: string; open: number; done: number }[];
   notices: { id: string; title: string; author: string; at: string | null }[];
   recent: TicketRow[];
+}
+
+/** 첨부 파일 메타 (바이트는 다운로드 라우트로만 나간다) */
+export interface AttachmentMeta {
+  id: number;
+  name: string;
+  mime: string;
+  size: number;
+  uploaderId: string;
+  uploaderName: string | null;
+  at: string | null;
 }

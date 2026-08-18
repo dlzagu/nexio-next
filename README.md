@@ -42,6 +42,7 @@ npm run db:reset   # 데모 DB 삭제 — 다음 실행 때 재시드
 | **데이터 경계** | 원본 스키마의 컬럼명은 `src/lib/data/` 밖으로 나가지 않는다 — 화면은 정규화된 타입만 본다 | `src/lib/data/` |
 | **디자인 시스템** | 토큰 168개 + Radix 프리미티브로 직접 구축, 다크모드·밀도 3단 | `src/app/tokens.css` · `/styleguide` |
 | **현실적인 시드** | 원본 실측 분포(이관분 과반·비공개 78%·미사용 상태코드)를 재현하는 결정적 생성기 | `src/lib/dev-seed/` |
+| **첨부파일** | 신청·댓글에서 올린 파일이 본문과 **한 트랜잭션**으로 저장되고, 다운로드는 가시성 게이트를 다시 지난다. 형식은 허용 목록(SVG·HTML 제외) | `src/lib/attachments.ts` · `docs/decisions/ADR-0008` |
 | **쓰기 경로** | 읽기와 다른 좁은 관문(INSERT/UPDATE만·한 트랜잭션) + 상태 전이 정본표 + 이력 로그. 칸반의 카드 이동도 같은 액션을 소비한다 | `src/lib/data/mutations.ts` · `docs/decisions/ADR-0006` |
 
 ## 아키텍처
@@ -65,11 +66,11 @@ SQLite (better-sqlite3)
 
 Next.js 16 (App Router) · React 19 · TypeScript strict · Tailwind 4 + 자체 토큰 ·
 Radix UI · TanStack Table · react-hook-form + zod · recharts · xss(새니타이즈) ·
-better-sqlite3 · vitest (106 tests) · GitHub Actions CI
+better-sqlite3 · vitest (122 tests) · GitHub Actions CI
 
 ## 배포 · CI/CD
 
-- **CI** (GitHub Actions): push/PR 마다 `verify`(lint·typecheck·테스트 106개) → `format:check` → `build`
+- **CI** (GitHub Actions): push/PR 마다 `verify`(lint·typecheck·테스트 122개) → `format:check` → `build`
 - **CD** (Vercel Git 연동): `main` push → 프로덕션 배포, PR → 프리뷰 URL 자동 발급
 - **환경변수 설정이 필요 없다** — 서버리스에서는 콜드스타트 때 메모리 DB 에 시드를
   즉석 생성한다 (`src/lib/db.ts`). 배포 상태는 `/api/diag` 로 확인한다

@@ -1,4 +1,10 @@
 import { NextResponse } from "next/server";
+import {
+  AttachmentError,
+  decodeUploads,
+  validateUploads,
+  type IncomingFile,
+} from "@/lib/data/attachments";
 import { applyAction, UnsupportedActionError } from "@/lib/data/mutations";
 import { getTicket } from "@/lib/data/tickets";
 import { devWritesAllowed } from "@/lib/db";
@@ -50,6 +56,21 @@ export async function POST(
     );
   }
 
+  // 첨부는 댓글에만 딸려 온다. 형식·크기 판정은 쓰기 게이트 **앞**에서 한다 —
+  // 쓰기가 꺼져 있어도 "이 파일은 못 올린다"는 사실은 알려줘야 한다.
+  let files: IncomingFile[] = [];
+  try {
+    files = validateUploads(decodeUploads(comment?.attachments ?? []));
+  } catch (e) {
+    if (e instanceof AttachmentError) {
+      return NextResponse.json(
+        { code: "INVALID_ATTACHMENT", message: e.message },
+        { status: 400 },
+      );
+    }
+    throw e;
+  }
+
   // 처리내역 저장 권한은 액션 권한과 **별개 축**이다.
   // 액션에 딸려 온 처리내역은 save 권한이 있을 때만 반영한다 (없으면 조용히 버리지 않고 무시).
   const canSave = canDo("save", ticket, user, config);
@@ -75,7 +96,7 @@ export async function POST(
       user,
       action,
       solution,
-      comment: comment?.body?.trim() ? comment : undefined,
+      comment: comment?.body?.trim() ? { ...comment, files } : undefined,
       reason,
     });
     return NextResponse.json({

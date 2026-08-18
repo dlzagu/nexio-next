@@ -10,9 +10,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { AttachPicker, toAttachmentPayload } from "./AttachPicker";
 import { Combobox } from "@/components/ui/Combobox";
 import { Notice } from "@/components/ui/EmptyState";
 import { TokenInput } from "@/components/ui/TokenInput";
@@ -64,8 +65,7 @@ export function RequestForm({
     failed: boolean;
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [files, setFiles] = useState<string[]>([]);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [files, setFiles] = useState<File[]>([]);
 
   const isCustomer = user.role === "CUSTOMER";
   const defaultRequester = isCustomer ? user.id : "";
@@ -114,7 +114,12 @@ export function RequestForm({
       const res = await fetch("/api/requests", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...values, from: reRequestFrom ?? "" }),
+        body: JSON.stringify({
+          ...values,
+          from: reRequestFrom ?? "",
+          // 첨부는 본문과 **한 요청**으로 간다 — 나눠 보내면 한쪽만 저장된다
+          attachments: await toAttachmentPayload(files),
+        }),
       });
       const body = (await res.json().catch(() => ({}))) as {
         echoNum?: string;
@@ -171,7 +176,14 @@ export function RequestForm({
             주세요.
           </p>
         </div>
-        <button type="button" className="btn btn-ghost" onClick={() => reset()}>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => {
+            reset();
+            setFiles([]);
+          }}
+        >
           <RotateCcw size={13} aria-hidden />
           초기화
         </button>
@@ -361,7 +373,7 @@ export function RequestForm({
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
-                onClick={() => fileRef.current?.click()}
+                onClick={() => document.getElementById("f-attach")?.click()}
               >
                 <Paperclip size={12} aria-hidden />
                 파일로 첨부
@@ -378,32 +390,11 @@ export function RequestForm({
 
           <div>
             <span className="label">첨부 파일</span>
-            <input
-              ref={fileRef}
-              type="file"
-              multiple
-              className="sr-only"
-              onChange={(e) =>
-                setFiles(Array.from(e.target.files ?? []).map((f) => f.name))
-              }
+            <AttachPicker
+              files={files}
+              onChange={setFiles}
+              inputId="f-attach"
             />
-            <button
-              type="button"
-              className="border-line-strong text-12 text-fg-muted hover:bg-hover flex w-full items-center justify-center gap-2 rounded-md border border-dashed py-5"
-              onClick={() => fileRef.current?.click()}
-            >
-              <Paperclip size={13} aria-hidden />
-              클릭해서 파일 선택
-            </button>
-            {files.length ? (
-              <ul className="mt-2 flex flex-wrap gap-1.5">
-                {files.map((f) => (
-                  <li key={f} className="chip">
-                    {f}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
           </div>
         </CardBody>
       </Card>

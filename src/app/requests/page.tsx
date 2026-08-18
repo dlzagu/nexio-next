@@ -36,6 +36,7 @@ export default async function RequestsPage({
     module: one(sp.module),
     priority: one(sp.priority),
     includeMigration: one(sp.migration) === "1",
+    unreadOnly: one(sp.unread) === "1",
   };
 
   const bare = (v: ListView): TicketFilters => ({
@@ -50,6 +51,7 @@ export default async function RequestsPage({
     requester: "",
     module: "",
     priority: "",
+    unreadOnly: false,
   });
 
   // 뷰 탭의 건수는 필터와 무관한 "큐의 크기"다

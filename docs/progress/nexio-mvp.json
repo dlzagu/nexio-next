@@ -638,12 +638,27 @@
         {
           "id": "s2",
           "name": "반쪽 기능 — 구현하거나 걷어낸다 (둘 중 하나로 확정)",
-          "status": "pending",
+          "status": "done",
           "logic": [
             "🔴 첨부파일(L) — 신청 폼의 '클릭해서 파일 선택'은 파일명 문자열만 state 에 담고 POST 본문에 싣지 않는다. zod 스키마·라우트·시드 스키마 어디에도 첨부가 없다(grep attach|upload|multipart = 0건). 게다가 '붙여넣은 이미지는 저장 안 되니 파일로 첨부하라'는 경고 3곳(RequestForm·Composer·SolutionPanel)이 가리키는 대안이 바로 이 죽은 경로다. 선택 = 저장 경로 구현 or 컨트롤 제거 + '첨부 미지원'을 ADR/README 에 명시",
             "대시보드 카드 ↔ 링크 불일치 — '미읽음 댓글' 카드는 미읽음 조건을 URL 로 못 넘긴다(TicketFilters 에 미읽음 필터 없음), '내 미처리' 카드는 openFg 로 세고 링크는 view=mine(종료건 포함)이라 25 vs 167 로 갈린다. 정답이 이미 dashboard.ts:51-56 mineListFilters 에 있다 → view=open + assignee/requester 로 링크 교체 (실측 확인됨)",
             "meta.ts:117-120 · AppShell.tsx:22-27 의 조용한 catch — 콤보박스 목록·사이드바 카운트가 조회 실패를 빈 값/0 으로 삼키고 로그도 안 남긴다. AppShell 은 바로 아래에서 '원인을 감추지 않는다'고 선언해 놓고 자기 카운트는 삼킨다",
             "미사용 자산 정리 — DetailSheet.tsx:618 OpenInNewTab 은 export 만 되고 import 0건 · RequestFilters.tsx:198 의 '이관 데이터 포함 (18,274건)' 은 원본 운영 DB 수치 하드코딩(현재 시드는 1,300) · 설치만 되고 import 0건인 의존성 3종(@tanstack/react-query · nuqs · sonner) → 쓰거나 지운다. ⚠️ 의존성 제거 후 npm run lock:fix 필수"
+          ],
+          "result": [
+            "🔴 첨부파일 — **구현**으로 확정(ADR-0008). 죽어 있던 컨트롤이 실제로 저장한다: 바이트는 데모 DB 의 BLOB(NX_OPTREPORT_FILE, SCHEMA_VERSION 3), 본문과 **한 요청·한 트랜잭션**(첨부가 거부되면 신청 자체가 저장되지 않는다), 형식은 허용 목록(MIME+확장자 동시 일치, SVG·HTML 제외), 한도는 개당 2MB·합계 5MB·5개를 **디코드한 실제 바이트**로 서버가 다시 잰다",
+            "첨부 올리는 곳 2 = 신청 폼 · 댓글창(같은 AttachPicker). 보는 곳 1 = 상세의 첨부 탭(요청·댓글에서 온 파일이 한 목록). 다운로드는 /api/tickets/[echoNum]/attachments/[id] — scopeClause 를 다시 지나고 접수번호+id 가 함께 맞아야 하며 항상 attachment+nosniff",
+            "경고 문구 3곳이 이제 실재하는 경로를 가리킨다. 처리내역(SolutionPanel)에는 세 번째 업로드 지점을 만들지 않고 \"아래 댓글 입력창의 [파일 첨부]\"로 안내를 고쳤다",
+            "시드에 첨부를 심었다(요청의 약 12%, 140건) — 배포본은 쓰기가 꺼져 있어 업로드가 불가능해 첨부 화면이 영원히 비어 보였다. 열면 실제로 읽히는 텍스트(로그·CSV·점검표)만, 내용은 전부 가상",
+            "대시보드 카드 ↔ 링크 일치: 미읽음 카드는 목록에 없던 필터(unread=1)를 새로 만들어 연결(실측 145 = 145, 모든 행에 점), 내 미처리는 view=mine(종료건 포함) → view=open+assignee/requester(실측 24 = 24)",
+            "조용한 catch 제거: meta.ts 콤보박스 4종·AppShell 사이드바 카운트가 실패를 빈 값/0 으로 삼키고 있었다 → 서버 로그에 남기고, 카운트는 null(못 읽음)과 0(없음)을 구분한다",
+            "미사용 자산 정리: OpenInNewTab(import 0건) 삭제 · RequestFilters 의 \"(18,274건)\" 원본 운영 수치 하드코딩 제거 · 의존성 3종(@tanstack/react-query·nuqs·sonner) 제거 후 npm run lock:fix"
+          ],
+          "verify": [
+            "npm run verify 통과 — 테스트 124개(신규 14: 첨부 12 + 대시보드 링크 2) · npm run build green",
+            "라이브(dev, 쓰기 ON) 실측: 신청+첨부 2건 → 201 · 상세 첨부 탭에 목록·다운로드 링크 · 다운로드 200(text/csv, attachment, nosniff, 바이트 일치)",
+            "거부 경로 실측: .exe 400 INVALID_ATTACHMENT · 2.2MB 400(한도 문구) · 화면에서는 고르는 즉시 사유 표시",
+            "댓글 첨부 실측: action=comment 200 후 같은 첨부 탭에 쌓임"
           ]
         },
         {
@@ -694,8 +709,8 @@
     "canApproveRequest 를 서버가 어떤 규칙으로 계산하는지 — BFF 가 그대로 전달만 하면 되는지"
   ],
   "session_continuation": {
-    "next_step": "P9.s2",
-    "note": "✅ P9.s1 완료(2026-08-18) — 라이브 결함 4건 제거: 디버그 try/catch · 승인 게이트 fail-open · 상세 열람 시 읽음 처리 · 미읽음 축 통일(read-state.ts 정본 신설). 테스트 110개 · verify green · dev 실측으로 배지/집계가 함께 내려가는 것까지 확인. ▶ 다음은 P9.s2 — 반쪽 기능을 '구현' 또는 '걷어내기' 둘 중 하나로 확정한다. 가장 큰 건 첨부파일이다: 신청 폼이 파일명만 state 에 담고 POST 에 싣지 않는데, 세 화면의 안내문이 '이미지는 파일로 첨부하라'고 그 죽은 경로를 가리킨다(사용자를 없는 기능으로 보낸다). 다음이 대시보드 카드↔링크 불일치(정답은 dashboard.ts 의 mineListFilters 에 이미 있다). ⚠️ 이 저장소에서 커밋할 때 user.email 이 dlzagu 계정이어야 배포된다(git config --local 로 고정. 클론하면 재발 — 증상은 push·CI 는 green 인데 라이브만 옛 빌드). ⛔ repo public 전환 금지 — 커밋 2f5f81c·96062da 에 익명화 전 실 DB명·사명·사내 경로가 남아 있다. ⚠️ 시드 스키마를 바꾸면 SCHEMA_VERSION 을 올리고 개발 서버 재시작(커넥션 전역 캐시). ⚠️ 의존성 변경 후 npm run lock:fix. 검증: npm run verify · npm run build · /api/diag · 쓰기는 launch.json 의 nexio-next-write 구성(ALLOW_DEV_WRITES=true).",
+    "next_step": "P9.s3",
+    "note": "✅ P9.s1·s2 완료(2026-08-18). s1 = 라이브 결함 4건(디버그 try/catch · 승인 게이트 fail-open · 상세 열람 시 읽음 처리 · 미읽음 축 통일). s2 = 첨부파일 구현(ADR-0008) · 대시보드 카드↔링크 일치 · 조용한 catch 제거 · 미사용 자산 정리. 테스트 124개 · build green. ▶ 다음은 P9.s3 — 문서 정합성이다. 가장 위험한 건 .claude/rules/bff.md: src/app/api/** 를 만질 때 **자동 주입**되는데 내용이 전부 Spring 시대(세션 쿠키 릴레이·redirect manual·302)라, 방치하면 매 세션 틀린 지침이 들어온다. 그 다음이 ARCHITECTURE.md 의 낡은 수치(테스트 개수·쓰기 미구현·isomorphic-dompurify)와 ADR-0001·0002 상태 헤더. ⚠️ 커밋 user.email 은 dlzagu 계정이어야 배포된다(git config --local 고정). ⛔ repo public 전환 금지(커밋 2f5f81c·96062da 에 익명화 전 실 DB명·사명·사내 경로). ⚠️ 시드 스키마 변경 시 SCHEMA_VERSION 올리고 개발 서버 재시작(현재 3). ⚠️ 의존성 변경 후 npm run lock:fix. 검증: npm run verify · npm run build · /api/diag · 쓰기는 launch.json 의 nexio-next-write 구성.",
     "compact_after_each_step": true
   }
 }

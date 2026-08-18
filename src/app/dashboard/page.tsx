@@ -54,7 +54,9 @@ export default async function DashboardPage() {
             label={isCustomer ? "내가 낸 미완료" : "내 미처리"}
             value={d.cards.myPending}
             tone="accent"
-            href={`/requests?view=mine`}
+            // 🔴 카드는 **미완료 + 내 건**을 센다. view=mine 은 종료건까지 포함하므로
+            //    그대로 링크하면 숫자와 목록이 갈라진다 (실측 25 vs 167)
+            href={`/requests?view=open&${isCustomer ? "requester" : "assignee"}=${encodeURIComponent(user.id)}`}
           />
           <StatCard
             label="진행 중"
@@ -72,7 +74,7 @@ export default async function DashboardPage() {
             label="미읽음 댓글"
             value={d.cards.unreadComments}
             tone="danger"
-            href="/requests?view=open"
+            href="/requests?view=open&unread=1"
           />
         </div>
 

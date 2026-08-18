@@ -113,11 +113,24 @@ export async function getMeta(user: User): Promise<MetaData> {
     }));
   };
 
+  /**
+   * 콤보박스 하나가 죽어도 화면 전체를 죽이지 않는다. 다만 **조용히 비우지는 않는다** —
+   * 목록이 빈 것과 조회가 실패한 것은 화면에서 똑같이 보이므로, 서버 로그에는 남긴다.
+   */
+  const settle = async (name: string, run: () => Promise<Option[]>) => {
+    try {
+      return await run();
+    } catch (e) {
+      console.error("[meta]", name, e instanceof Error ? e.message : e);
+      return [] as Option[];
+    }
+  };
+
   const [companies, assignees, requesters, systems] = await Promise.all([
-    companiesQ().catch(() => []),
-    assigneesQ().catch(() => []),
-    requestersQ().catch(() => []),
-    systemsQ().catch(() => []),
+    settle("companies", companiesQ),
+    settle("assignees", assigneesQ),
+    settle("requesters", requestersQ),
+    settle("systems", systemsQ),
   ]);
 
   return { companies, assignees, requesters, systems, contractTime: null };

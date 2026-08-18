@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { listAttachments } from "@/lib/data/attachments";
 import { getTicket } from "@/lib/data/tickets";
 import {
   availableActions,
@@ -20,10 +21,14 @@ export async function GET(
   // 가시성 밖의 건은 "없음"으로 응답한다 — 존재 여부를 흘리지 않는다
   if (!ticket) return NextResponse.json({ code: "NOT_FOUND" }, { status: 404 });
 
-  const config = await loadCustomerConfig(ticket.custCode);
+  const [config, attachments] = await Promise.all([
+    loadCustomerConfig(ticket.custCode),
+    listAttachments(ticket.echoNum, user),
+  ]);
   return NextResponse.json({
     ticket,
     config,
+    attachments,
     actions: availableActions(ticket, user, config),
     cancelHint: cancelHint(ticket, user),
     // 액션바는 최대 3개만 노출하므로, 화면이 편집 UI 를 켤지 판단할 플래그를 따로 내린다.

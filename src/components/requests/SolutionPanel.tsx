@@ -175,8 +175,8 @@ export function SolutionPanel({
 
       {pasteWarning ? (
         <Notice tone="warning">
-          붙여넣은 이미지는 저장되지 않습니다. 캡처해서{" "}
-          <strong>파일로 첨부</strong>해 주세요.{" "}
+          붙여넣은 이미지는 저장되지 않습니다. 아래 댓글 입력창의{" "}
+          <strong>파일 첨부</strong>로 올려 주세요 — 첨부 탭에 함께 쌓입니다.{" "}
           <button
             type="button"
             className="underline"

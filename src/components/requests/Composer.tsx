@@ -5,6 +5,7 @@ import { useState } from "react";
 import { RichEditor } from "@/components/ui/RichEditor";
 import { cn } from "@/lib/cn";
 import { isBlankHtml } from "@/lib/sanitize";
+import { AttachPicker } from "./AttachPicker";
 
 /**
  * 상세 하단에 **항상 보이는** 댓글 입력창 (재설계 §2 "탭 전환 없이 코멘트").
@@ -15,6 +16,8 @@ import { isBlankHtml } from "@/lib/sanitize";
 export function Composer({
   value,
   onChange,
+  files,
+  onFilesChange,
   onSubmit,
   sending,
   disabled,
@@ -25,6 +28,8 @@ export function Composer({
 }: {
   value: string;
   onChange: (html: string) => void;
+  files: File[];
+  onFilesChange: (next: File[]) => void;
   onSubmit: () => void;
   sending: boolean;
   disabled?: boolean;
@@ -68,7 +73,8 @@ export function Composer({
         <div className="mt-2 flex flex-col gap-2">
           {pasteWarning ? (
             <p className="text-warning-text text-11">
-              붙여넣은 이미지는 저장되지 않습니다. 파일로 첨부해 주세요.{" "}
+              붙여넣은 이미지는 저장되지 않습니다. 아래{" "}
+              <strong>파일 첨부</strong> 로 올려 주세요.{" "}
               <button
                 type="button"
                 className="underline"
@@ -87,6 +93,8 @@ export function Composer({
             minHeight={72}
             onImagePaste={() => setPasteWarning(true)}
           />
+
+          <AttachPicker files={files} onChange={onFilesChange} compact />
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             {canPostInternal ? (

@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import {
+  AttachmentError,
+  decodeUploads,
+  validateUploads,
+  type IncomingFile,
+} from "@/lib/data/attachments";
 import { createTicket } from "@/lib/data/mutations";
 import { getTicket } from "@/lib/data/tickets";
 import { devWritesAllowed, select } from "@/lib/db";
-import { requestFormSchema } from "@/lib/schemas";
+import { attachmentsInputSchema, requestFormSchema } from "@/lib/schemas";
 import { currentUser, loadCustomerConfig } from "@/lib/session";
 
 /**
@@ -16,6 +22,7 @@ import { currentUser, loadCustomerConfig } from "@/lib/session";
 const bodySchema = requestFormSchema.extend({
   /** 재신청 원본 접수번호 */
   from: z.string().optional().default(""),
+  attachments: attachmentsInputSchema,
 });
 
 export async function POST(req: Request) {
@@ -103,6 +110,22 @@ export async function POST(req: Request) {
     parentEchoNum = parent.echoNum;
   }
 
+  let files: IncomingFile[] = [];
+  try {
+    files = decodeUploads(form.attachments);
+    // 크기·형식 판정은 저장 직전에도 한 번 더 돈다(attachmentStatements) — 여기서는
+    // **쓰기가 꺼져 있어도** 사용자가 잘못된 첨부를 미리 알 수 있게 먼저 던져 본다
+    validateUploads(files);
+  } catch (e) {
+    if (e instanceof AttachmentError) {
+      return NextResponse.json(
+        { code: "INVALID_ATTACHMENT", message: e.message },
+        { status: 400 },
+      );
+    }
+    throw e;
+  }
+
   if (!devWritesAllowed()) {
     return NextResponse.json(
       {
@@ -128,6 +151,7 @@ export async function POST(req: Request) {
       scheDate: form.scheDate,
       isPublic: form.isPublic,
       refEmails: form.refEmails,
+      files,
       parentEchoNum,
       // 미등록 고객사는 승인 단계를 쓰지 않는 것으로 본다 (loadCustomerConfig 가 null)
       usesApproval: config?.usesApproval ?? false,

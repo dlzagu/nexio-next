@@ -14,6 +14,7 @@ process.env.ALLOW_DEV_WRITES = "true";
 
 import { canMove, daysLeft, moveAction } from "@/lib/board";
 import { addComment } from "@/lib/data/mutations";
+import { getDashboard } from "@/lib/data/dashboard";
 import { getNotice, listNotices } from "@/lib/data/notices";
 import {
   listNotifications,
@@ -487,5 +488,33 @@ describe("미읽음 축 — 기준은 한 곳에서만 정의한다", () => {
     // 운영팀에게는 그대로 보인다 (숨기는 게 아니라 축이 다른 것)
     const asInternal = await getTicket(row!.echoNum, internal);
     expect(asInternal?.commentCount).toBe(beforeInternal!.commentCount + 1);
+  });
+});
+
+/**
+ * 카드의 숫자를 누르면 **그 숫자를 만든 목록**이 나와야 한다.
+ * 조건을 URL 로 넘기지 못하면 25 를 누르고 167 을 보게 된다 (실측).
+ */
+describe("대시보드 카드 ↔ 링크", () => {
+  it("'미읽음 댓글' 숫자 = unread=1 목록의 건수", async () => {
+    const d = await getDashboard(internal);
+    const list = await listTickets(
+      filters({ view: "open", unreadOnly: true }),
+      internal,
+    );
+    expect(list.total).toBe(d.cards.unreadComments);
+  });
+
+  it("'내 미처리' 숫자 = view=open + 내 담당 목록의 건수 (view=mine 이 아니다)", async () => {
+    const d = await getDashboard(internal);
+    const linked = await listTickets(
+      filters({ view: "open", assignee: internal.id }),
+      internal,
+    );
+    expect(linked.total).toBe(d.cards.myPending);
+
+    // 종료건까지 포함하는 view=mine 은 다른 숫자다 — 그래서 링크를 바꿨다
+    const mine = await listTickets(filters({ view: "mine" }), internal);
+    expect(mine.total).toBeGreaterThan(linked.total);
   });
 });

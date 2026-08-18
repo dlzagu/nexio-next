@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ExternalLink, Info } from "lucide-react";
+import { Info } from "lucide-react";
 import { StatusBadge } from "@/components/ui/Badge";
 import { InlineError, Notice } from "@/components/ui/EmptyState";
 import { RichTextBlock } from "@/components/ui/RichText";
@@ -15,14 +15,17 @@ import { cn } from "@/lib/cn";
 import { USER_ROLE_LABEL, isTerminal } from "@/lib/codes";
 import { fmtDate, fmtDateTime, fmtRelative } from "@/lib/format";
 import { announceReadStateChanged } from "@/lib/read-signal";
+import { fmtBytes } from "@/lib/attachments";
 import type { ActionSpec } from "@/lib/permissions";
-import type { CustomerConfig, TicketDetail } from "@/lib/types";
+import type { AttachmentMeta, CustomerConfig, TicketDetail } from "@/lib/types";
+import { toAttachmentPayload } from "./AttachPicker";
 import { Composer } from "./Composer";
 import { SolutionPanel, toDraft, type SolutionDraft } from "./SolutionPanel";
 
 interface Payload {
   ticket: TicketDetail;
   config: CustomerConfig | null;
+  attachments: AttachmentMeta[];
   actions: ActionSpec[];
   cancelHint: string | null;
   can: {
@@ -137,6 +140,8 @@ export function DetailSheet({
   const actionMsg =
     echoNum && actionState?.echoNum === echoNum ? actionState.msg : null;
 
+  const attachments = data?.attachments ?? [];
+
   // 상태 4(해결안제시) 이상이면 고객이 실제로 읽는 '처리결과'를 기본 탭으로
   const defaultTab = (() => {
     if (!t) return "request";
@@ -155,6 +160,9 @@ export function DetailSheet({
       count: t?.comments.filter((c) => !c.isLog).length,
       dot: t?.hasUnreadComment,
     },
+    ...(attachments.length
+      ? [{ value: "files", label: "첨부", count: attachments.length }]
+      : []),
     { value: "history", label: "이력" },
   ];
 
@@ -180,11 +188,17 @@ export function DetailSheet({
     echoNum: string;
     html: string;
     internalOnly: boolean;
+    files: File[];
   } | null>(null);
   const comment =
     echoNum && commentState?.echoNum === echoNum
       ? commentState
-      : { echoNum: echoNum ?? "", html: "", internalOnly: false };
+      : {
+          echoNum: echoNum ?? "",
+          html: "",
+          internalOnly: false,
+          files: [] as File[],
+        };
 
   const [busy, setBusy] = useState<null | "save" | "comment">(null);
 
@@ -241,7 +255,12 @@ export function DetailSheet({
   const postComment = async () => {
     setBusy("comment");
     await runAction("comment", {
-      comment: { body: comment.html, adminOnly: comment.internalOnly },
+      comment: {
+        body: comment.html,
+        adminOnly: comment.internalOnly,
+        // 댓글과 첨부는 한 요청·한 트랜잭션이다 (ADR-0008)
+        attachments: await toAttachmentPayload(comment.files),
+      },
     });
     setBusy(null);
   };
@@ -422,6 +441,10 @@ export function DetailSheet({
               <CommentThread ticket={t} />
             </TabPanel>
 
+            <TabPanel value="files">
+              <AttachmentList echoNum={t.echoNum} items={attachments} />
+            </TabPanel>
+
             <TabPanel value="history">
               <div className="flex flex-col gap-2.5">
                 <HistoryRow
@@ -485,6 +508,10 @@ export function DetailSheet({
             onChange={(html) =>
               setCommentState({ ...comment, echoNum: t.echoNum, html })
             }
+            files={comment.files}
+            onFilesChange={(files) =>
+              setCommentState({ ...comment, echoNum: t.echoNum, files })
+            }
             onSubmit={postComment}
             sending={busy === "comment"}
             disabled={!data?.can.comment}
@@ -506,6 +533,45 @@ export function DetailSheet({
         </div>
       )}
     </Sheet>
+  );
+}
+
+/**
+ * 첨부 목록. 바이트는 목록에 싣지 않고 **누를 때** 받아 간다 —
+ * 상세 응답에 파일을 담으면 큰 첨부 하나가 화면 전체를 느리게 만든다.
+ * 다운로드는 가시성 게이트를 다시 지난다(라우트).
+ */
+function AttachmentList({
+  echoNum,
+  items,
+}: {
+  echoNum: string;
+  items: AttachmentMeta[];
+}) {
+  if (items.length === 0) {
+    return <p className="text-12 text-fg-subtle">첨부된 파일이 없습니다.</p>;
+  }
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {items.map((f) => (
+        <li
+          key={f.id}
+          className="border-line-subtle flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md border px-3 py-2"
+        >
+          <a
+            className="text-13 text-fg-strong hover:text-accent-text font-medium underline-offset-2 hover:underline"
+            href={`/api/tickets/${encodeURIComponent(echoNum)}/attachments/${f.id}`}
+            download={f.name}
+          >
+            {f.name}
+          </a>
+          <span className="text-11 text-fg-subtle">{fmtBytes(f.size)}</span>
+          <span className="text-11 text-fg-muted ml-auto">
+            {f.uploaderName ?? f.uploaderId} · {fmtDate(f.at)}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -652,15 +718,3 @@ function Dot() {
   );
 }
 
-export function OpenInNewTab({ echoNum }: { echoNum: string }) {
-  return (
-    <a
-      href={`/requests?view=all&open=${encodeURIComponent(echoNum)}`}
-      target="_blank"
-      rel="noreferrer"
-      className="btn btn-ghost btn-xs"
-    >
-      <ExternalLink size={11} aria-hidden />새 탭
-    </a>
-  );
-}

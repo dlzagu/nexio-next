@@ -25,7 +25,8 @@ export function Sidebar({
   openCount,
 }: {
   user: User;
-  openCount: number;
+  /** null = 카운트를 못 읽었다 (0 건과 구분한다) */
+  openCount: number | null;
 }) {
   const pathname = usePathname();
 
@@ -56,7 +57,7 @@ export function Sidebar({
             <Link key={href} href={href} className="nav-i" data-active={active}>
               <Icon size={15} aria-hidden />
               <span className="flex-1">{label}</span>
-              {href === "/requests" && openCount > 0 ? (
+              {href === "/requests" && (openCount ?? 0) > 0 ? (
                 <span className="num text-11 text-fg-subtle">{openCount}</span>
               ) : null}
             </Link>

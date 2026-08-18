@@ -6,6 +6,7 @@ import {
   ENGINEER_COMMENTS,
   INTERNAL_COMPANY,
   INTERNAL_MEMBERS,
+  ATTACH_FILES,
   MEDIA_TYPES,
   MIGRATION_OKREMARKS,
   MIGRATION_REMARKS,
@@ -639,6 +640,36 @@ function seed(db: DB): void {
       if (chance(0.8)) insRead.run(echo, uid, lastId);
       else if (chance(0.5) && lastId > 1) insRead.run(echo, uid, lastId - 1);
       // else: 읽음 기록 없음 = 전부 미읽음
+    }
+  }
+
+  // ── 첨부 ─────────────────────────────────────────────
+  // 배포본은 쓰기가 꺼져 있어(ALLOW_DEV_WRITES) 업로드를 못 한다 → 첨부 화면이
+  // 늘 비어 보이지 않도록 일부 요청에 미리 붙여 둔다. 내용은 전부 가상이다.
+  const insFile = db.prepare(
+    `INSERT INTO NX_OPTREPORT_FILE
+       (PECHONUM, FILE_NM, MIME_TP, FILE_SZ, FILE_DATA, USERID, REG_DT)
+     VALUES (?,?,?,?,?,?,?)`,
+  );
+  for (const t of tickets) {
+    if (t.REQTYPE === "MIGRATION") continue;
+    if (!chance(0.12)) continue;
+    const count = chance(0.25) ? 2 : 1;
+    const used = new Set<string>();
+    for (let i = 0; i < count; i++) {
+      const f = pick(ATTACH_FILES);
+      if (used.has(f.name)) continue;
+      used.add(f.name);
+      const bytes = Buffer.from(f.body, "utf8");
+      insFile.run(
+        t.ECHONUM as string,
+        f.name,
+        f.mime,
+        bytes.length,
+        bytes,
+        t.CUSTPERSON as string,
+        t.REQDATE as string,
+      );
     }
   }
 }

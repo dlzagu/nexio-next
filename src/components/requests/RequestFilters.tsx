@@ -51,6 +51,7 @@ export function RequestFilters({
     "module",
     "priority",
     "migration",
+    "unread",
   ].filter((k) => get(k)).length;
 
   return (
@@ -195,7 +196,22 @@ export function RequestFilters({
               }
             />
             이관 데이터 포함
-            <span className="text-11 text-fg-subtle">(18,274건)</span>
+            <span className="text-11 text-fg-subtle">
+              구시스템에서 옮겨온 과거 이력
+            </span>
+          </label>
+
+          {/* 대시보드 '미읽음 댓글' 카드가 이 필터로 들어온다 — 숫자를 누르면
+              그 숫자를 만든 목록이 나와야 한다 */}
+          <label className="text-12 text-fg-muted flex h-[var(--ctl-h-md)] cursor-pointer items-center gap-2 px-1">
+            <input
+              type="checkbox"
+              checked={get("unread") === "1"}
+              onChange={(e) =>
+                set({ unread: e.target.checked ? "1" : null }, { resetPage: true })
+              }
+            />
+            안 읽은 글이 있는 요청만
           </label>
 
           <button
@@ -214,6 +230,7 @@ export function RequestFilters({
                   module: null,
                   priority: null,
                   migration: null,
+                  unread: null,
                 },
                 { resetPage: true },
               )

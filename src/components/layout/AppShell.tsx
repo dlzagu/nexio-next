@@ -19,11 +19,17 @@ const OPEN_FILTERS: TicketFilters = {
   includeMigration: false,
 };
 
-async function openCountFor(user: User): Promise<number> {
+/**
+ * 사이드바의 미완료 카운트. 실패해도 화면은 살려 두되, **0 인 척하지 않는다** —
+ * 0 건과 조회 실패는 사용자에게 같은 모양이라 서버 로그가 유일한 단서다.
+ * (바로 아래에서 "원인을 감추지 않는다"고 해 놓고 여기만 삼키고 있었다)
+ */
+async function openCountFor(user: User): Promise<number | null> {
   try {
     return (await listTickets(OPEN_FILTERS, user)).total;
-  } catch {
-    return 0;
+  } catch (e) {
+    console.error("[sidebar 미완료 카운트]", e instanceof Error ? e.message : e);
+    return null;
   }
 }
 

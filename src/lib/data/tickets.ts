@@ -156,6 +156,13 @@ function filterClauses(
 
   if (!f.includeMigration) w.push("COALESCE(d.REQTYPE,'') <> 'MIGRATION'");
 
+  // 미읽음 판정은 뱃지·대시보드와 **같은 정본**을 쓴다 (read-state.ts)
+  if (f.unreadOnly) {
+    w.push(
+      `${lastVisibleCommentIdSql(user.role)} > COALESCE(rs.LAST_SEEN_COMMENT_ID, 0)`,
+    );
+  }
+
   if (f.keyword) {
     params.push({ name: "kw", value: `%${f.keyword}%` });
     w.push(
