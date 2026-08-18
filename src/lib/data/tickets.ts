@@ -39,6 +39,7 @@ interface RawRow {
   REMARKS: string | null;
   PROGRESS: string | null;
   systemName: string | null;
+  B1GUBUN: number | null;
   MODULE: string | null;
   REQLEVEL: string | null;
   REQTYPE: string | null;
@@ -76,7 +77,10 @@ function toRow(r: RawRow): TicketRow {
     progress: (progressRaw || "1") as ProgressCode,
     progressRaw,
     systemName: trim(r.systemName) || null,
+    systemId: r.B1GUBUN === null || r.B1GUBUN === undefined ? "" : String(r.B1GUBUN),
     moduleLabel: labelOf(MODULE, r.MODULE),
+    // 코드표에 없는 이관분 원문(예: MODULE 에 '재무관리' 가 값으로 든 행)은 빈 값으로 떨군다
+    moduleCode: trim(r.MODULE) in MODULE ? trim(r.MODULE) : "",
     priority: labelOf(PRIORITY, r.REQLEVEL),
     priorityCode: trim(r.REQLEVEL),
     reqType: trim(r.REQTYPE),
@@ -104,7 +108,7 @@ function toRow(r: RawRow): TicketRow {
  */
 const rowSelect = (user: User) => `
   d.ECHONUM, d.CUSTCODE, c.COMPANY_NAME_LOC AS custName, d.TITLE, d.REMARKS,
-  d.PROGRESS, os.SYSTEM_NAME AS systemName, d.MODULE, d.REQLEVEL, d.REQTYPE,
+  d.PROGRESS, os.SYSTEM_NAME AS systemName, d.B1GUBUN, d.MODULE, d.REQLEVEL, d.REQTYPE,
   d.CUSTPERSON, rm.MBER_NM AS requesterName,
   d.SUCCERSON, am.MBER_NM AS assigneeName,
   d.REQDATE, d.SCHEDATE, d.SUCCDATE, d.PUBLICYN, d.WORKTIME,

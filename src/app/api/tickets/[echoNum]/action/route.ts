@@ -7,6 +7,8 @@ import {
 } from "@/lib/data/attachments";
 import { applyAction, UnsupportedActionError } from "@/lib/data/mutations";
 import { getTicket } from "@/lib/data/tickets";
+import { MODULE } from "@/lib/codes";
+import { select } from "@/lib/db";
 import { devWritesAllowed, writeDisabledReason } from "@/lib/db";
 import { actionLabel, canDo } from "@/lib/permissions";
 import { isBlankHtml } from "@/lib/sanitize";
@@ -71,6 +73,88 @@ export async function POST(
     throw e;
   }
 
+  /**
+   * 접수하며 확정한 분류. 🔒 클라이언트가 보낸 값을 믿지 않는다 —
+   * 운영시스템이 **그 티켓 고객사의 것인지** 서버가 다시 조회하고, 모듈은 코드표에
+   * 있는 값만 통과시킨다. 접수 외의 액션에 실려 오면 조용히 버린다(전이표 밖의 부수효과 금지).
+   */
+  let triage:
+    | {
+        systemId?: string;
+        systemName?: string;
+        moduleCode?: string;
+        expeTime?: number;
+        scheDate?: string;
+      }
+    | undefined;
+
+  if (action === "receive" && parsed.data.triage) {
+    const t = parsed.data.triage;
+    triage = {};
+
+    if (t.systemId.trim()) {
+      const sys = await select<{ SYSTEM_NAME: string | null }>(
+        `SELECT SYSTEM_NAME FROM COMPANY_OPER_SYSTEM
+          WHERE OPER_SYS_ID = @id AND COMPANY_CODE = @cc
+            AND COALESCE(USE_YN,'Y') = 'Y' AND COALESCE(DEL_YN,'N') <> 'Y'`,
+        [
+          { name: "id", value: Number(t.systemId) },
+          { name: "cc", value: ticket.custCode },
+        ],
+      );
+      if (sys.length === 0) {
+        return NextResponse.json(
+          {
+            code: "INVALID_SYSTEM",
+            message: "선택한 운영시스템이 이 고객사의 것이 아닙니다.",
+          },
+          { status: 400 },
+        );
+      }
+      triage.systemId = t.systemId.trim();
+      triage.systemName = (sys[0].SYSTEM_NAME ?? "").trim() || undefined;
+    }
+
+    if (t.moduleCode.trim()) {
+      if (!(t.moduleCode.trim() in MODULE)) {
+        return NextResponse.json(
+          { code: "INVALID_MODULE", message: "모듈 코드가 올바르지 않습니다." },
+          { status: 400 },
+        );
+      }
+      triage.moduleCode = t.moduleCode.trim();
+    }
+
+    if (t.expeTime.trim()) {
+      const n = Number(t.expeTime);
+      if (!Number.isFinite(n) || n < 0 || n > 999) {
+        return NextResponse.json(
+          {
+            code: "INVALID_EXPETIME",
+            message: "예상 시간은 0~999 사이의 숫자로 입력해 주세요.",
+          },
+          { status: 400 },
+        );
+      }
+      triage.expeTime = n;
+    }
+
+    if (t.scheDate.trim()) {
+      const v = t.scheDate.trim();
+      const limit = new Date(new Date().getFullYear() + 2, 11, 31);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || new Date(v) > limit) {
+        return NextResponse.json(
+          {
+            code: "INVALID_SCHEDATE",
+            message: "예상 처리일이 올바르지 않습니다 (2년 이내).",
+          },
+          { status: 400 },
+        );
+      }
+      triage.scheDate = v;
+    }
+  }
+
   // 처리내역 저장 권한은 액션 권한과 **별개 축**이다.
   // 액션에 딸려 온 처리내역은 save 권한이 있을 때만 반영한다 (없으면 조용히 버리지 않고 무시).
   const canSave = canDo("save", ticket, user, config);
@@ -96,6 +180,7 @@ export async function POST(
       action,
       solution,
       comment: comment?.body?.trim() ? { ...comment, files } : undefined,
+      triage,
       reason,
     });
     return NextResponse.json({

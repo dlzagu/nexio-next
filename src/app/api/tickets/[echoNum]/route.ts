@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { listAttachments } from "@/lib/data/attachments";
+import { listSystems } from "@/lib/data/meta";
 import { getTicket } from "@/lib/data/tickets";
 import {
   availableActions,
@@ -21,14 +22,19 @@ export async function GET(
   // 가시성 밖의 건은 "없음"으로 응답한다 — 존재 여부를 흘리지 않는다
   if (!ticket) return NextResponse.json({ code: "NOT_FOUND" }, { status: 404 });
 
-  const [config, attachments] = await Promise.all([
+  const [config, attachments, systems] = await Promise.all([
     loadCustomerConfig(ticket.custCode),
     listAttachments(ticket.echoNum, user),
+    // 접수 화면이 분류를 바로잡을 때 고를 목록 — 그 고객사 것만
+    user.role === "CUSTOMER"
+      ? Promise.resolve([])
+      : listSystems(ticket.custCode),
   ]);
   return NextResponse.json({
     ticket,
     config,
     attachments,
+    systems,
     actions: availableActions(ticket, user, config),
     cancelHint: cancelHint(ticket, user),
     // 액션바는 최대 3개만 노출하므로, 화면이 편집 UI 를 켤지 판단할 플래그를 따로 내린다.

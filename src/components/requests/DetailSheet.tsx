@@ -7,16 +7,18 @@ import { Info } from "lucide-react";
 import { StatusBadge } from "@/components/ui/Badge";
 import { InlineError, Notice } from "@/components/ui/EmptyState";
 import { RichTextBlock } from "@/components/ui/RichText";
-import { Sheet } from "@/components/ui/Sheet";
+import { Modal, Sheet } from "@/components/ui/Sheet";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Combobox } from "@/components/ui/Combobox";
 import { Stepper } from "@/components/ui/Stepper";
 import { TabPanel, Tabs, type TabDef } from "@/components/ui/Tabs";
 import { cn } from "@/lib/cn";
-import { USER_ROLE_LABEL, isTerminal } from "@/lib/codes";
+import { MODULE, USER_ROLE_LABEL, isTerminal } from "@/lib/codes";
 import { fmtDate, fmtDateTime, fmtRelative } from "@/lib/format";
 import { announceReadStateChanged } from "@/lib/read-signal";
 import { fmtBytes } from "@/lib/attachments";
 import type { ActionSpec } from "@/lib/permissions";
+import type { Option } from "@/lib/data/meta";
 import type { AttachmentMeta, CustomerConfig, TicketDetail } from "@/lib/types";
 import { toAttachmentPayload } from "./AttachPicker";
 import { Composer } from "./Composer";
@@ -26,6 +28,7 @@ interface Payload {
   ticket: TicketDetail;
   config: CustomerConfig | null;
   attachments: AttachmentMeta[];
+  systems: Option[];
   actions: ActionSpec[];
   cancelHint: string | null;
   can: {
@@ -200,7 +203,44 @@ export function DetailSheet({
           files: [] as File[],
         };
 
-  const [busy, setBusy] = useState<null | "save" | "comment">(null);
+  const [busy, setBusy] = useState<null | "save" | "comment" | "receive">(null);
+
+  /**
+   * 접수 폼. 고객은 운영시스템·모듈을 모르는 경우가 많아 **빈 값이나 잘못된 값**으로 들어온다 —
+   * 접수하는 담당자가 그 자리에서 바로잡고, 예상 시간·예상 처리일까지 함께 잡는다.
+   * 열 때 현재 값을 채워 두므로 그대로 두면 아무것도 바뀌지 않는다.
+   */
+  const [triage, setTriage] = useState<{
+    echoNum: string;
+    systemId: string;
+    moduleCode: string;
+    expeTime: string;
+    scheDate: string;
+  } | null>(null);
+  const openTriage = () => {
+    if (!t) return;
+    setTriage({
+      echoNum: t.echoNum,
+      systemId: t.systemId,
+      moduleCode: t.moduleCode,
+      expeTime: t.solution.expeTime === null ? "" : String(t.solution.expeTime),
+      scheDate: (t.scheDate ?? "").slice(0, 10),
+    });
+  };
+  const submitTriage = async () => {
+    if (!triage) return;
+    setBusy("receive");
+    const ok = await runAction("receive", {
+      triage: {
+        systemId: triage.systemId,
+        moduleCode: triage.moduleCode,
+        expeTime: triage.expeTime,
+        scheDate: triage.scheDate,
+      },
+    });
+    setBusy(null);
+    if (ok) setTriage(null);
+  };
 
   const runAction = async (
     action: string,
@@ -335,7 +375,12 @@ export function DetailSheet({
                         key={a.action}
                         type="button"
                         className={cn("btn", VARIANT[a.variant])}
-                        onClick={() => runAction(a.action)}
+                        onClick={() =>
+                          // 접수는 분류를 확정하는 단계다 — 바로 실행하지 않고 폼을 연다
+                          a.action === "receive"
+                            ? openTriage()
+                            : runAction(a.action)
+                        }
                       >
                         {a.label}
                       </button>
@@ -534,6 +579,90 @@ export function DetailSheet({
           />
         </div>
       )}
+
+      <Modal
+        open={!!triage}
+        onOpenChange={(v) => !v && setTriage(null)}
+        title="접수 — 분류 확정"
+        description="고객이 비워 두거나 잘못 고른 값을 여기서 바로잡습니다. 그대로 두면 바뀌지 않습니다."
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setTriage(null)}
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={submitTriage}
+              disabled={busy === "receive"}
+            >
+              {busy === "receive" ? "접수 중…" : "접수"}
+            </button>
+          </>
+        }
+      >
+        {triage ? (
+          <div className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="label">운영시스템</span>
+              <Combobox
+                options={data?.systems ?? []}
+                value={triage.systemId}
+                onChange={(v) => setTriage({ ...triage, systemId: v })}
+                placeholder="선택 안 함"
+                clearLabel="비움"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="label">모듈</span>
+              <Combobox
+                options={Object.entries(MODULE).map(([value, label]) => ({
+                  value,
+                  label,
+                }))}
+                value={triage.moduleCode}
+                onChange={(v) => setTriage({ ...triage, moduleCode: v })}
+                placeholder="선택 안 함"
+                clearLabel="비움"
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="label">예상 시간 (h)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={999}
+                  step="0.5"
+                  className="input"
+                  value={triage.expeTime}
+                  onChange={(e) =>
+                    setTriage({ ...triage, expeTime: e.target.value })
+                  }
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="label">예상 처리일</span>
+                <input
+                  type="date"
+                  className="input"
+                  value={triage.scheDate}
+                  onChange={(e) =>
+                    setTriage({ ...triage, scheDate: e.target.value })
+                  }
+                />
+              </label>
+            </div>
+            {actionMsg ? (
+              <p className="text-11 text-warning-text">{actionMsg}</p>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
     </Sheet>
   );
 }

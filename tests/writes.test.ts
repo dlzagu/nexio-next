@@ -519,3 +519,65 @@ describe("공유 DB — 붙으면 배포에서도 열린다", () => {
     }
   });
 });
+
+describe("접수 — 분류 확정", () => {
+  it("접수하면서 운영시스템·모듈·예상시간·예상처리일을 함께 확정한다", async () => {
+    const t = await pick("2");
+    const before = (await logRows(t.echoNum)).length;
+
+    await applyAction({
+      ticket: t,
+      user: internal,
+      action: "receive",
+      triage: {
+        systemId: "14",
+        systemName: "ERP 운영계",
+        moduleCode: "4",
+        expeTime: 8,
+        scheDate: "2026-09-01",
+      },
+    });
+
+    const after = await getTicket(t.echoNum, internal);
+    expect(after?.progress).toBe("3");
+    expect(after?.systemId).toBe("14");
+    expect(after?.moduleCode).toBe("4");
+    expect(after?.solution.expeTime).toBe(8);
+    expect(after?.scheDate?.slice(0, 10)).toBe("2026-09-01");
+
+    // 🔴 무엇을 바꿨는지 이력에 남는다 — 안 남기면 누가 언제 분류를 바꿨는지 알 수 없다
+    const logs = await logRows(t.echoNum);
+    expect(logs.length).toBe(before + 1);
+    expect(logs.at(-1)?.COMMENT).toContain("ERP 운영계");
+    expect(logs.at(-1)?.COMMENT).toContain("예상 8h");
+  });
+
+  it("빈 값은 **건드리지 않는다** (지우기가 아니라 유지)", async () => {
+    const t = await pick("2");
+    const keepSystem = t.systemId;
+    const keepModule = t.moduleCode;
+
+    await applyAction({
+      ticket: t,
+      user: internal,
+      action: "receive",
+      triage: { systemId: "", moduleCode: "", scheDate: "" },
+    });
+
+    const after = await getTicket(t.echoNum, internal);
+    expect(after?.systemId).toBe(keepSystem);
+    expect(after?.moduleCode).toBe(keepModule);
+  });
+
+  it("접수가 아닌 액션에는 분류가 딸려 가지 않는다", async () => {
+    const t = await pick("3");
+    const keep = t.systemId;
+    await applyAction({
+      ticket: t,
+      user: internal,
+      action: "propose",
+      triage: { systemId: "14", systemName: "ERP 운영계" },
+    });
+    expect((await getTicket(t.echoNum, internal))?.systemId).toBe(keep);
+  });
+});

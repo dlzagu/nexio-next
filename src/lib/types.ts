@@ -38,7 +38,10 @@ export interface TicketRow {
   progress: ProgressCode;
   progressRaw: string;
   systemName: string | null; // B1GUBUN → COMPANY_OPER_SYSTEM.SYSTEM_NAME
+  /** 접수 화면이 현재 값을 골라 둘 수 있게 코드도 함께 내린다 (라벨만으로는 선택 못 한다) */
+  systemId: string;
   moduleLabel: string; // MODULE → B1GUBUN2
+  moduleCode: string;
   priority: string; // REQLEVEL 의 라벨 (PRIORLVL)
   priorityCode: string; // REQLEVEL 원본 코드 — 정렬·톤 판정용
   reqType: string; // REQTYPE (MIGRATION/SERVICE/WORK)

@@ -13,6 +13,8 @@ const ticket = (over: Partial<TicketRow> = {}): TicketRow => ({
   custName: "한빛제약",
   title: "테스트",
   progress: "3",
+  systemId: "",
+  moduleCode: "",
   progressRaw: "3",
   systemName: "ERP",
   moduleLabel: "재무관리",

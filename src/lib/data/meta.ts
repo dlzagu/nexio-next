@@ -135,3 +135,23 @@ export async function getMeta(user: User): Promise<MetaData> {
 
   return { companies, assignees, requesters, systems, contractTime: null };
 }
+
+/**
+ * 한 고객사의 운영시스템 목록. 접수 화면이 **그 티켓의 고객사 것만** 고를 수 있게 한다 —
+ * 목록을 좁히는 건 편의고, 실제 경계는 라우트가 다시 확인한다(fail-closed).
+ */
+export async function listSystems(custCode: string): Promise<Option[]> {
+  if (!custCode) return [];
+  const rows = await select<{ OPER_SYS_ID: string; SYSTEM_NAME: string | null }>(
+    `SELECT os.OPER_SYS_ID, os.SYSTEM_NAME
+       FROM COMPANY_OPER_SYSTEM os
+      WHERE os.COMPANY_CODE = @cc
+        AND COALESCE(os.USE_YN,'Y') = 'Y' AND COALESCE(os.DEL_YN,'N') <> 'Y'
+      ORDER BY os.SORT_ORD, os.OPER_SYS_ID`,
+    [{ name: "cc", value: custCode }],
+  );
+  return rows.map((r) => ({
+    value: String(r.OPER_SYS_ID),
+    label: (r.SYSTEM_NAME ?? "").trim() || `시스템 ${r.OPER_SYS_ID}`,
+  }));
+}

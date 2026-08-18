@@ -99,7 +99,26 @@ export const solutionPatchSchema = z.object({
 
 export type SolutionPatch = z.output<typeof solutionPatchSchema>;
 
+/**
+ * 접수(receive) 시 담당자가 확정하는 분류.
+ *
+ * 고객은 운영시스템·모듈을 모르는 경우가 많아 **빈 값이나 잘못된 값으로 들어온다** —
+ * 접수하는 담당자가 그 자리에서 바로잡는다. 예상 시간·예상 처리일도 여기서 잡는다.
+ * 빈 문자열은 "안 건드림"이다 (지우기가 아니라 유지).
+ */
+export const triageSchema = z.object({
+  systemId: z.string().optional().default(""),
+  moduleCode: z.string().optional().default(""),
+  /** 예상 처리 시간(h). 소수 허용 */
+  expeTime: z.string().optional().default(""),
+  /** 예상 처리일 (YYYY-MM-DD) */
+  scheDate: z.string().optional().default(""),
+});
+
+export type Triage = z.output<typeof triageSchema>;
+
 export const actionSchema = z.object({
+  triage: triageSchema.optional(),
   echoNum: z.string().min(1),
   solution: solutionPatchSchema.optional(),
   comment: z

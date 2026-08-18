@@ -1,4 +1,4 @@
-import type { ProgressCode } from "../codes";
+import { MODULE, labelOf, type ProgressCode } from "../codes";
 import { select, write, type Param, type WriteStatement } from "../db";
 import { toDbStamp } from "../format";
 import { sanitize } from "../sanitize";
@@ -203,9 +203,17 @@ export async function applyAction(opts: {
   action: TicketAction;
   solution?: SolutionPatch;
   comment?: { body: string; adminOnly: boolean; files?: IncomingFile[] };
+  /** 접수 시 확정한 분류. 라우트가 고객사 소속·코드 유효성을 검증한 뒤에만 넘긴다 */
+  triage?: {
+    systemId?: string;
+    systemName?: string;
+    moduleCode?: string;
+    expeTime?: number;
+    scheDate?: string;
+  };
   reason?: string;
 }): Promise<ActionResult> {
-  const { ticket, user, action, solution, comment, reason } = opts;
+  const { ticket, user, action, solution, comment, reason, triage } = opts;
 
   if (action === "comment") {
     if (!comment) throw new UnsupportedActionError("comment (본문 없음)");
@@ -225,6 +233,30 @@ export async function applyAction(opts: {
     Object.assign(patch, rule.stamp?.(user, now) ?? {});
     // 미배정 건을 접수하면 접수한 사람이 담당자가 된다. 이미 배정돼 있으면 건드리지 않는다.
     if (action === "receive" && !ticket.assigneeId) patch.SUCCERSON = user.id;
+  }
+
+  /**
+   * 접수하면서 분류를 확정한다. **빈 값은 건드리지 않는다** — 지우기가 아니라 유지다.
+   * 무엇을 바꿨는지는 이력 로그에 남긴다(안 남기면 "누가 언제 분류를 바꿨나"를 알 수 없다).
+   */
+  const triaged: string[] = [];
+  if (action === "receive" && triage) {
+    if (triage.systemId) {
+      patch.B1GUBUN = Number(triage.systemId);
+      triaged.push(`운영시스템 ${triage.systemName ?? triage.systemId}`);
+    }
+    if (triage.moduleCode) {
+      patch.MODULE = triage.moduleCode;
+      triaged.push(`모듈 ${labelOf(MODULE, triage.moduleCode)}`);
+    }
+    if (typeof triage.expeTime === "number") {
+      patch.EXPETIME = triage.expeTime;
+      triaged.push(`예상 ${triage.expeTime}h`);
+    }
+    if (triage.scheDate) {
+      patch.SCHEDATE = `${triage.scheDate} 00:00:00`;
+      triaged.push(`예상 처리일 ${triage.scheDate}`);
+    }
   }
   if (rule.reasonCol && reason?.trim()) {
     patch[rule.reasonCol] = sanitize(`<p>${reason.trim()}</p>`);
@@ -249,7 +281,7 @@ export async function applyAction(opts: {
       insertComment({
         echoNum: ticket.echoNum,
         author: user,
-        body: rule.log,
+        body: triaged.length ? `${rule.log} (${triaged.join(" · ")})` : rule.log,
         adminOnly: false,
         isLog: true,
         progress: rule.to ?? ticket.progress,
