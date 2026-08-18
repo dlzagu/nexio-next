@@ -1,3 +1,4 @@
+import { RequestsView } from "@/components/requests/RequestsView";
 import { getMeta } from "@/lib/data/meta";
 import { ARCHIVE_PAGE_SIZE, listTickets } from "@/lib/data/tickets";
 import { currentUser } from "@/lib/session";
@@ -14,23 +15,7 @@ export default async function RequestsPage({
 }: {
   searchParams: Promise<SP>;
 }) {
-  // ⚠️ NX-DEBUG: Vercel SSR 500 원인 추적용 임시 계측 — 원인 확정 즉시 제거한다
-  try {
-    return await renderRequests(await searchParams);
-  } catch (e) {
-    const err = e as Error;
-    return (
-      <pre style={{ whiteSpace: "pre-wrap", padding: 16 }}>
-        NX-DEBUG SSR ERROR{"\n"}
-        {String(err?.stack || err?.message || err)}
-      </pre>
-    );
-  }
-}
-
-async function renderRequests(sp: SP) {
-  // 모듈 로드 시점 실패까지 잡기 위해 동적 import (NX-DEBUG)
-  const { RequestsView } = await import("@/components/requests/RequestsView");
+  const sp = await searchParams;
   const user = await currentUser();
   if (!user) return null;
 

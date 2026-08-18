@@ -161,6 +161,22 @@ describe("canDo — 승인은 승인권자만, 그리고 승인 단계를 쓰는
     ).toBe(true);
   });
 
+  it("설정을 모르면 차단한다 — 미등록 고객사가 오히려 통과하던 구멍 (fail-closed)", () => {
+    const approver = user({ isApprover: true });
+    // config 를 아예 안 넘긴 경우 · null 인 경우 둘 다 차단이어야 한다
+    expect(canDo("approve", ticket({ progress: "1" }), approver)).toBe(false);
+    expect(canDo("approve", ticket({ progress: "1" }), approver, null)).toBe(
+      false,
+    );
+    expect(canDo("reject", ticket({ progress: "1" }), approver, null)).toBe(
+      false,
+    );
+    // 확장 단계(테스트 완료)와 **같은 축**이다 — 여기만 opt-out 이면 안 된다
+    expect(canDo("testComplete", ticket({ progress: "5" }), user(), null)).toBe(
+      false,
+    );
+  });
+
   it("고객사가 승인 단계를 쓰지 않으면 승인권자여도 차단", () => {
     expect(
       canDo(

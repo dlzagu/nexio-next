@@ -41,7 +41,9 @@ export function canDo(
       // 대기(1) 에서 승인권자만. 고객사가 승인 단계를 쓰는 경우에 한정
       if (p !== "1") return false;
       if (!isCustomer) return false;
-      if (config && !config.usesApproval) return false;
+      // 🔒 고객사 설정을 모르면 차단이다 — config 가 없다고 통과시키면 미등록 고객사에서
+      //    승인권자가 승인 단계를 쓰지 않는 건까지 승인할 수 있다 (아래 테스트 단계와 같은 축).
+      if (!config?.usesApproval) return false;
       return user.isApprover;
 
     case "cancel":

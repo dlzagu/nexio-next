@@ -32,6 +32,29 @@ interface Payload {
   };
 }
 
+/**
+ * 상세를 열면 그 건의 미읽음을 내린다.
+ *
+ * 🔴 다 읽었는데 목록의 빨간 점·종 배지가 그대로면 사용자에게는 **지울 방법이 없다**.
+ *    읽음선은 서버(NX_OPTREPORT_READ_STATE)에 있고 목록 뱃지·대시보드·알림이 모두
+ *    같은 값을 보므로, 여기서 한 번 올리면 세 곳이 함께 내려간다.
+ *
+ * @returns 저장이 실제로 일어났는가 (202 = 쓰기 꺼짐이라 저장되지 않았다)
+ */
+async function markTicketRead(echoNum: string): Promise<boolean> {
+  const res = await fetch("/api/notifications", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ echoNum }),
+  });
+  if (res.status === 200) return true;
+  // 202(WRITE_DISABLED)는 기본 설정에서 늘 오는 정상 경로다 — 그 외는 삼키지 않는다
+  if (res.status !== 202) {
+    console.error("[읽음 처리 실패]", res.status, echoNum);
+  }
+  return false;
+}
+
 const VARIANT: Record<ActionSpec["variant"], string> = {
   primary: "btn-primary",
   outline: "btn-outline",
@@ -78,7 +101,16 @@ export function DetailSheet({
         }
         return r.json() as Promise<Payload>;
       })
-      .then((p) => alive && setLoaded({ echoNum, data: p }))
+      .then((p) => {
+        if (!alive) return;
+        setLoaded({ echoNum, data: p });
+        // 안 읽은 글이 있을 때만 쓴다 — 열 때마다 UPSERT 하지 않는다
+        if (p.ticket.hasUnreadComment) {
+          void markTicketRead(echoNum)
+            .then((saved) => alive && saved && router.refresh())
+            .catch((e: unknown) => console.error("[읽음 처리 실패]", e));
+        }
+      })
       .catch(
         (e: unknown) =>
           alive &&
@@ -90,7 +122,7 @@ export function DetailSheet({
     return () => {
       alive = false;
     };
-  }, [echoNum]);
+  }, [echoNum, router]);
 
   // 현재 열린 티켓의 응답만 유효하다 — 이전 티켓의 응답이 남아 보이지 않는다
   const fresh = echoNum && loaded?.echoNum === echoNum ? loaded : null;

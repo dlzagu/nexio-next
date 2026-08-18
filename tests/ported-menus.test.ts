@@ -391,3 +391,101 @@ describe("업무 현황 보드", () => {
     expect(daysLeft("어제", today)).toBeNull();
   });
 });
+
+/**
+ * 미읽음은 세 곳(목록 뱃지 · 대시보드 카드 · 알림센터)에 동시에 나타난다.
+ * 기준이 갈라지면 **사용자가 지울 수 없는 빨간 점**이 남는다 — 그게 이 블록의 검증 대상이다.
+ */
+describe("미읽음 축 — 기준은 한 곳에서만 정의한다", () => {
+  it("내 건이 아니어도 열어보면 내려간다 (운영팀 목록에 남던 점)", async () => {
+    const { rows } = await listTickets(filters({ view: "open" }), internal);
+    const row = rows.find(
+      (r) =>
+        r.assigneeId &&
+        r.assigneeId !== internal.id &&
+        r.requesterId !== internal.id,
+    );
+    expect(row).toBeDefined();
+    const other: User = { ...internal, id: row!.assigneeId! };
+
+    await addComment({
+      echoNum: row!.echoNum,
+      user: other,
+      body: "<p>담당자가 남긴 메모</p>",
+      adminOnly: false,
+    });
+    expect((await getTicket(row!.echoNum, internal))?.hasUnreadComment).toBe(
+      true,
+    );
+    // 알림에는 안 뜬다(내 건이 아니다) → '모두 읽음'으로는 못 지운다. 열어서 지울 수 있어야 한다
+    expect(
+      (await listNotifications(internal)).items.every(
+        (n) => n.echoNum !== row!.echoNum,
+      ),
+    ).toBe(true);
+
+    expect(await markNotificationsRead(internal, row!.echoNum)).toBeGreaterThan(
+      0,
+    );
+    expect((await getTicket(row!.echoNum, internal))?.hasUnreadComment).toBe(
+      false,
+    );
+  });
+
+  it("못 보는 건은 읽음선도 만들지 못한다 (fail-closed)", async () => {
+    const { rows } = await listTickets(filters(), internal);
+    const row = rows.find((r) => r.custCode !== "HB001");
+    expect(row).toBeDefined();
+    const outsider: User = {
+      ...internal,
+      id: "hb.yoon",
+      role: "CUSTOMER",
+      custCode: "HB001",
+      isApprover: true,
+    };
+
+    expect(await markNotificationsRead(outsider, row!.echoNum)).toBe(0);
+    const line = await select<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM NX_OPTREPORT_READ_STATE
+        WHERE ECHONUM = @en AND USER_ID = 'hb.yoon'`,
+      [{ name: "en", value: row!.echoNum }],
+    );
+    expect(Number(line[0].n)).toBe(0);
+  });
+
+  it("내부 전용 댓글은 뱃지·댓글 수에도 잡히지 않는다 (알림과 같은 축)", async () => {
+    const { rows } = await listTickets(filters({ view: "open" }), internal);
+    const row = rows.find((r) => r.requesterId && r.assigneeId);
+    expect(row).toBeDefined();
+    const requester: User = {
+      ...internal,
+      id: row!.requesterId!,
+      role: "CUSTOMER",
+      custCode: row!.custCode,
+    };
+    const assignee: User = { ...internal, id: row!.assigneeId! };
+
+    await markNotificationsRead(requester, row!.echoNum);
+    const before = await getTicket(row!.echoNum, requester);
+    const beforeInternal = await getTicket(row!.echoNum, internal);
+    expect(before?.hasUnreadComment).toBe(false);
+    // 같은 티켓인데 세는 숫자가 이미 다르다 — 앞선 테스트가 남긴 내부 전용 글 때문이다
+    expect(beforeInternal!.commentCount).toBeGreaterThan(before!.commentCount);
+
+    await addComment({
+      echoNum: row!.echoNum,
+      user: assignee,
+      body: "<p>내부 공유: 계약시간 초과 예상</p>",
+      adminOnly: true,
+    });
+
+    const after = await getTicket(row!.echoNum, requester);
+    // 🔴 고객사는 이 글을 열어도 볼 수 없다 → 점이 뜨면 지울 방법이 없다
+    expect(after?.hasUnreadComment).toBe(false);
+    expect(after?.commentCount).toBe(before?.commentCount);
+    expect((await listNotifications(requester)).total).toBe(0);
+    // 운영팀에게는 그대로 보인다 (숨기는 게 아니라 축이 다른 것)
+    const asInternal = await getTicket(row!.echoNum, internal);
+    expect(asInternal?.commentCount).toBe(beforeInternal!.commentCount + 1);
+  });
+});

@@ -11,6 +11,7 @@ import type {
 } from "../types";
 import { USER_TYPE, type UserRole } from "../codes";
 import { splitBody } from "./request-body";
+import { lastVisibleCommentIdSql, visibleCommentGuard } from "./read-state";
 
 /**
  * 티켓 조회. 원본 테이블 NX_OPTREPORTD(97컬럼) → 정규화된 TicketRow.
@@ -95,15 +96,22 @@ function toRow(r: RawRow): TicketRow {
   };
 }
 
-const ROW_SELECT = `
+/**
+ * 한 행을 그리는 데 필요한 컬럼.
+ * 🔴 댓글 수·미읽음은 **보는 사람에 따라 달라진다** — 내부 전용 댓글은 고객사에게
+ *    존재하지 않으므로 세지도, 미읽음으로 잡지도 않는다. 기준은 알림센터와 같은
+ *    한 곳(read-state.ts)에서 온다. 축이 갈라지면 지울 수 없는 미읽음 점이 남는다.
+ */
+const rowSelect = (user: User) => `
   d.ECHONUM, d.CUSTCODE, c.COMPANY_NAME_LOC AS custName, d.TITLE, d.REMARKS,
   d.PROGRESS, os.SYSTEM_NAME AS systemName, d.MODULE, d.REQLEVEL, d.REQTYPE,
   d.CUSTPERSON, rm.MBER_NM AS requesterName,
   d.SUCCERSON, am.MBER_NM AS assigneeName,
   d.REQDATE, d.SCHEDATE, d.SUCCDATE, d.PUBLICYN, d.WORKTIME,
   (SELECT COUNT(*) FROM NX_OPTREPORTR r
-     WHERE r.PECHONUM = d.ECHONUM AND COALESCE(r.IS_LOG_YN,'N') <> 'Y') AS commentCount,
-  (SELECT MAX(r.ID) FROM NX_OPTREPORTR r WHERE r.PECHONUM = d.ECHONUM) AS lastCommentId,
+     WHERE r.PECHONUM = d.ECHONUM AND COALESCE(r.IS_LOG_YN,'N') <> 'Y'
+       AND ${visibleCommentGuard(user.role)}) AS commentCount,
+  ${lastVisibleCommentIdSql(user.role)} AS lastCommentId,
   rs.LAST_SEEN_COMMENT_ID AS lastSeenCommentId`;
 
 const ROW_JOINS = `
@@ -213,7 +221,7 @@ export async function listTickets(
   const total = Number(countRow[0]?.n ?? 0);
 
   const rows = await select<RawRow>(
-    `SELECT ${ROW_SELECT} ${ROW_JOINS}
+    `SELECT ${rowSelect(user)} ${ROW_JOINS}
       WHERE ${whereSql}
       ORDER BY d.REQDATE DESC, d.ECHONUM DESC
       LIMIT ${limit} OFFSET ${offset}`,
@@ -249,7 +257,7 @@ export async function listRecentlyDone(
   });
 
   const rows = await select<RawRow>(
-    `SELECT ${ROW_SELECT} ${ROW_JOINS}
+    `SELECT ${rowSelect(user)} ${ROW_JOINS}
       WHERE ${scope}
         AND d.PROGRESS = '9'
         AND COALESCE(d.REQTYPE,'') <> 'MIGRATION'
@@ -305,7 +313,7 @@ export async function getTicket(
   params.push({ name: "en", value: echoNum });
 
   const rows = await select<RawDetail>(
-    `SELECT ${ROW_SELECT},
+    `SELECT ${rowSelect(user)},
             d.CONTENT, d.REQREMARKS,
             d.MEDIA, d.REFMAIL, d.REREQYN, d.P_ECHONUM,
             d.CAUSE, d.PROCESS, d.IMPROVEMENT, d.ANSWER, d.RESULT,
@@ -445,9 +453,9 @@ export async function getComments(
   viewerRole: UserRole,
 ): Promise<Comment[]> {
   const params: Param[] = [{ name: "en", value: echoNum }];
-  // 내부 전용 코멘트는 고객사에게 보이지 않는다 (fail-closed: 내부만 통과)
-  const adminGuard =
-    viewerRole === "INTERNAL" ? "1=1" : "COALESCE(r.ADMIN_ONLY_YN,'N') <> 'Y'";
+  // 내부 전용 코멘트는 고객사에게 보이지 않는다 (fail-closed: 내부만 통과).
+  // 뱃지·알림과 **같은 정본**을 쓴다 — 여기만 넓히면 "점은 뜨는데 열면 없는 글"이 된다.
+  const adminGuard = visibleCommentGuard(viewerRole, "r");
 
   const rows = await select<RawComment>(
     `SELECT r.ID, r.USERID, m.MBER_NM AS userName, m.USER_TYPE AS userType,

@@ -2,6 +2,7 @@ import { PROGRESS, progressLabel } from "../codes";
 import { select, type Param } from "../db";
 import { toWallClockIso } from "../format";
 import type { DashboardData, TicketFilters, User } from "../types";
+import { lastVisibleCommentIdSql } from "./read-state";
 import { listTickets, scopeClause } from "./tickets";
 
 /**
@@ -83,8 +84,8 @@ export async function getDashboard(user: User): Promise<DashboardData> {
          SELECT d.PROGRESS,
                 CASE WHEN ${MINE_COL} = @me THEN 1 ELSE 0 END AS mineFg,
                 CASE WHEN d.PROGRESS NOT IN (${TERMINAL}) THEN 1 ELSE 0 END AS openFg,
-                COALESCE((SELECT MAX(r2.ID) FROM NX_OPTREPORTR r2
-                           WHERE r2.PECHONUM = d.ECHONUM), 0) AS lastCommentId,
+                COALESCE(${lastVisibleCommentIdSql(user.role, "d", "r2")}, 0)
+                  AS lastCommentId,
                 COALESCE(rs.LAST_SEEN_COMMENT_ID, 0) AS lastSeen
            FROM NX_OPTREPORTD d
            LEFT JOIN NX_OPTREPORT_READ_STATE rs

@@ -1,6 +1,8 @@
 import { select, write, type Param } from "../db";
 import { plainPreview, toWallClockIso } from "../format";
 import type { User } from "../types";
+import { visibleCommentGuard } from "./read-state";
+import { scopeClause } from "./tickets";
 
 /**
  * 알림센터. 원본은 이벤트 발생 시점에 알림 레코드를 쌓는 구조지만,
@@ -55,18 +57,11 @@ function sinceStamp(): string {
   return toWallClockIso(since)?.replace("T", " ") ?? "";
 }
 
-/** 내부 전용 댓글 가드. 고객사·외부업체에게는 존재조차 알리지 않는다 */
-function adminGuardFor(user: User, alias: string): string {
-  return user.role === "INTERNAL"
-    ? "1=1"
-    : `COALESCE(${alias}.ADMIN_ONLY_YN,'N') <> 'Y'`;
-}
-
 export async function listNotifications(
   user: User,
 ): Promise<{ items: NotificationItem[]; total: number }> {
   const params: Param[] = [{ name: "me", value: user.id }];
-  const adminGuard = adminGuardFor(user, "r");
+  const adminGuard = visibleCommentGuard(user.role, "r");
   params.push({ name: "since", value: sinceStamp() });
 
   const from = `
@@ -127,14 +122,20 @@ export async function markNotificationsRead(
   user: User,
   echoNum?: string,
 ): Promise<number> {
-  const params: Param[] = [{ name: "me", value: user.id }];
-  let scope = "(d.CUSTPERSON = @me OR d.SUCCERSON = @me)";
+  const params: Param[] = [];
+  let scope: string;
   if (echoNum) {
+    // 🔴 한 건을 열어서 읽는 경우는 '내 건'으로 좁히지 않는다 — 목록 뱃지는 **볼 수 있는
+    //    모든 건**에 뜨므로(내가 신청자·담당자가 아닌 건 포함), 소유로 좁히면 운영팀에게
+    //    지울 수 없는 미읽음 점이 남는다. 범위는 가시성 게이트가 대신 잠근다:
+    //    못 보는 건은 읽음선도 만들 수 없다(fail-closed).
+    scope = `${scopeClause(user, params)} AND d.ECHONUM = @en`;
     params.push({ name: "en", value: echoNum });
-    scope += " AND d.ECHONUM = @en";
   } else {
-    // 🔴 '모두 읽음'의 대상은 **알림 창에 실제로 뜬 건**뿐이다.
-    //    내 전체 티켓으로 넓히면 30일 밖의 미읽음까지 지워져 목록 뱃지가 통째로 사라진다.
+    // '모두 읽음'의 대상은 알림 창에 뜬 **내 건**이다 (알림의 정의 그대로)
+    params.push({ name: "me", value: user.id });
+    scope = "(d.CUSTPERSON = @me OR d.SUCCERSON = @me)";
+    // 창 밖(30일 이전)까지 넓히면 목록 뱃지가 통째로 사라진다 — 지난 일은 이력이다
     params.push({ name: "since", value: sinceStamp() });
     scope += ` AND EXISTS (
         SELECT 1 FROM NX_OPTREPORTR x
@@ -143,7 +144,7 @@ export async function markNotificationsRead(
            AND x.USERID <> @me
            AND x.COMMDATE >= @since
            AND x.ID > COALESCE(rs.LAST_SEEN_COMMENT_ID, 0)
-           AND ${adminGuardFor(user, "x")})`;
+           AND ${visibleCommentGuard(user.role, "x")})`;
   }
 
   // 대상 티켓의 마지막 댓글 id 로 읽음선을 끌어올린다 (건별 UPSERT)
