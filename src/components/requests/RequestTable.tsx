@@ -27,6 +27,23 @@ const col = createColumnHelper<TicketRow>();
 const PRIVATE_HINT = "비공개 — 신청한 사람과 그 회사 승인권자만 볼 수 있습니다";
 
 /**
+ * 좁은 화면에서 접는 열. 기준은 **"이 열이 없어도 행을 알아볼 수 있는가"** 다 —
+ * 단계·제목·댓글만 있으면 어느 요청인지 알 수 있고, 나머지는 상세에서 본다.
+ * 가로 스크롤로 밀어 두면 열이 있다는 사실조차 모른 채 옆으로 끌게 된다.
+ */
+const FOLD = {
+  sm: "hidden sm:table-cell",
+  md: "hidden md:table-cell",
+  lg: "hidden lg:table-cell",
+} as const;
+
+type Fold = keyof typeof FOLD;
+const foldClass = (col: { columnDef: { meta?: unknown } }) =>
+  FOLD[
+    (col.columnDef.meta as { fold?: Fold } | undefined)?.fold ?? ("" as Fold)
+  ];
+
+/**
  * 컬럼 7개로 제한한다. 나머지 90여 필드는 전부 상세 Sheet 로 —
  * 원본은 목록 화면에 상세 편집 컨트롤 56개가 얹혀 있었다.
  *
@@ -56,7 +73,9 @@ export function RequestTable({
           mainFlowIndex(b.original.progress),
         cell: (c) => (
           <span className="flex items-center gap-2">
-            <MiniStepper progress={c.row.original.progress} />
+            <span className="hidden sm:inline-flex">
+              <MiniStepper progress={c.row.original.progress} />
+            </span>
             <StatusBadge progress={c.row.original.progress} />
           </span>
         ),
@@ -80,16 +99,22 @@ export function RequestTable({
           </span>
         ),
       }),
-      col.accessor("custName", { header: "고객사", size: 116 }),
+      col.accessor("custName", {
+        header: "고객사",
+        size: 116,
+        meta: { fold: "lg" },
+      }),
       col.accessor("assigneeName", {
         header: "담당자",
         size: 92,
+        meta: { fold: "md" },
         cell: (c) =>
           c.getValue() ?? <span className="text-fg-subtle">미배정</span>,
       }),
       col.accessor("priorityCode", {
         header: "우선순위",
         size: 84,
+        meta: { fold: "md" },
         // 코드 오름차순 = 긴급(1) → 낮음(4)
         cell: (c) => (
           <PriorityBadge code={c.getValue()} label={c.row.original.priority} />
@@ -119,6 +144,7 @@ export function RequestTable({
       col.accessor("reqDate", {
         header: "신청일",
         size: 96,
+        meta: { fold: "sm" },
         // 이상치(1900-01-01)와 null 은 항상 최후위
         sortingFn: (a, b) =>
           dateSortKey(a.original.reqDate) - dateSortKey(b.original.reqDate),
@@ -138,7 +164,7 @@ export function RequestTable({
   });
 
   return (
-    <div className="scroll-y max-h-[calc(100dvh-278px)]">
+    <div className="scroll-y scroll-x max-h-[calc(100dvh-278px)]">
       <table className="tbl">
         <thead>
           {table.getHeaderGroups().map((hg) => (
@@ -146,7 +172,11 @@ export function RequestTable({
               {hg.headers.map((h) => {
                 const dir = h.column.getIsSorted();
                 return (
-                  <th key={h.id} style={{ width: h.column.columnDef.size }}>
+                  <th
+                    key={h.id}
+                    style={{ width: h.column.columnDef.size }}
+                    className={foldClass(h.column)}
+                  >
                     <button
                       type="button"
                       onClick={h.column.getToggleSortingHandler()}
@@ -200,6 +230,7 @@ export function RequestTable({
                       : "whitespace-nowrap",
                     ["custName", "assigneeName"].includes(cell.column.id) &&
                       "ell text-fg-muted",
+                    foldClass(cell.column),
                   )}
                 >
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}

@@ -664,7 +664,7 @@
         {
           "id": "s3",
           "name": "문서 정합성 — 코드보다 낡아 다음 세션을 속이는 곳",
-          "status": "pending",
+          "status": "done",
           "logic": [
             "🔴 .claude/rules/bff.md — src/app/api/** 를 만질 때 자동 주입되는데 내용이 전부 Spring 시대다(세션 쿠키 릴레이·redirect manual·302 처리). 실제 라우트 6개는 자체 SQLite 를 직접 읽는다 → 현행 쓰기 규약(canDo 재판정 · 202 계약 · write() 관문)으로 교체. 자동 주입이라 방치하면 매번 틀린 지침이 들어온다",
             "CLAUDE.md:86 '테넌트 격리·비공개 제한은 Spring 이 fail-closed 로 처리 중' → 실제로는 우리 scopeClause(tickets.ts:121)가 한다. HOW NOT 1~3행(BFF 세션·redirect·CSRF)도 Spring 전제라 '역사 기록'으로 분리",
@@ -678,7 +678,7 @@
         {
           "id": "s4",
           "name": "안전장치 — 같은 사고를 기계가 막게 한다",
-          "status": "pending",
+          "status": "done",
           "logic": [
             "⚠️ 갱신(2026-08-18): 커밋 작성자 문제는 이력 재작성 때 mailmap 으로 전 커밋을 통일해 해소했다. 남은 건 \"새 클론에서 git config --local 이 없으면 재발\"뿐이라 README·ADR-0005 에 기록 한 줄이면 된다.",
             "커밋 작성자 게이트를 README·ADR-0005 에 기록 — 2026-08-18 배포 차단의 원인이었고, 해결책(git config --local user.email)이 클론에 따라오지 않아 다른 환경에서 재발한다. 증상은 'push·CI 는 green 인데 라이브만 옛 빌드'",
@@ -749,7 +749,7 @@
         {
           "id": "s5",
           "name": "접근성·성능 측정 결과를 남긴다 (미착수)",
-          "status": "pending",
+          "status": "done",
           "logic": [
             "키보드 대안·색 외 구분·대비는 구현했는데 측정 결과가 없다. Lighthouse + axe 리포트를 docs/ 에 남기고 README 에 수치 한 줄."
           ]
@@ -810,6 +810,26 @@
             "sync 스크립트: 모의 원격(파일 libSQL)에 th.oh 신규 1건 반영, 라이브 티켓 2,250건 그대로 유지 · 컬럼 드리프트 fixture 에서는 아무것도 쓰지 않고 exit 1",
             "테스트 142개(신규 4: 페르소나↔시드 정합성) · lint·typecheck green"
           ]
+        },
+        {
+          "id": "s9",
+          "name": "✅ 반응형 — 좁은 화면에서 무엇을 접을지 정했다 (2026-08-18 요청)",
+          "status": "done",
+          "logic": [
+            "증상: 375px 에서 사이드바가 216px 를 고정으로 차지해 **본문이 159px** 만 남았다(실측). 데스크톱 우선으로 만들고 좁은 화면을 한 번도 열어보지 않았다.",
+            "사이드바는 md 미만에서 감추고 상단바의 메뉴 버튼이 서랍으로 연다. 알맹이(SidebarBody)는 **한 벌** — 메뉴를 두 벌로 두면 하나에만 항목이 추가되는 날이 온다.",
+            "표는 가로로 밀지 않고 **접는다**(meta.fold). 기준 = '이 열이 없어도 행을 알아볼 수 있는가'. 요청 조회는 단계·제목·댓글만 남기고(375px), 고객사 관리는 고객사·코드·조작만 남긴다.",
+            "🔴 함정: globals.css 의 컴포넌트 클래스(.btn·.seg)는 레이어 밖이라 Tailwind 의 hidden 을 **이긴다** — 버튼에 md:hidden 을 붙였는데 넓은 화면에서도 남았다. 감싸는 요소에서 접는다.",
+            "모바일 글자 크기: --fs-11 을 12px 로 올리는 미디어 쿼리 한 줄로 전 화면 해결(Lighthouse font-size 실패 해소). 컴포넌트마다 고치지 않는다.",
+            "서랍을 연 채 창을 넓히면 사이드바와 겹친다 → min-width:768px 에서 .drawer/.ovl-nav 를 숨긴다."
+          ],
+          "verify": [
+            "375px: 전 화면(대시보드·조회·보드·신청·공지·고객사·스타일가이드) 가로 넘침 0",
+            "375px: 서랍 열기 → 메뉴 6개 + 미완료 뱃지 표시 → 항목 누르면 이동하며 닫힘",
+            "768px: 사이드바 복귀 · 메뉴 버튼 사라짐 · 조회 표 6열 · 넘침 0",
+            "상세 시트는 이미 min(폭,100vw) 라 전체 폭으로 열린다",
+            "Lighthouse 모바일 권장사항 96 → 100 (font-size 해소), 접근성 100 유지"
+          ]
         }
       ]
     }
@@ -826,8 +846,8 @@
     "아카이브 뷰의 정렬을 서버 정렬로 올릴지 — 지금은 '페이지 내 정렬' 한계를 화면에 표기하는 것으로 닫았다"
   ],
   "session_continuation": {
-    "next_step": "P9.s3 (문서 정합성)",
-    "note": "✅ 2026-08-18 완료: P9.s1·s2 · 스크린샷 6장 · 이력 익명화 · NX_ 접두어 · 공유 DB(Turso) 라이브 연결 · 상세 시트 휠 스크롤 · 접수 시 분류 확정(P10.s6) · 고객사 관리(P10.s7) · **역할 전환 드리프트 수정(P10.s8)**. 테스트 142개 · lint/typecheck green. 🔴 사용자 대기: ① git push origin main (고객사 관리 + 역할 전환 수정이 아직 라이브에 없다 — force 불필요) ② 배포 후 `npm run db:sync:remote` 로 공유 DB 에 th.oh 반영(전체 재시드 아님 — 라이브 데이터 유지) ③ .env.local 의 ALLOW_DEV_WRITES=false 한 줄 제거(로컬 저장). ▶ AI 가 이어서 할 것: P9.s3 문서 정합성(.claude/rules/bff.md 가 자동 주입되는데 Spring 시대 내용) → P9.s4(라우트 핸들러 테스트 0건 · CI 가 앱을 실행하지 않는다) → P10.s5(접근성·성능 측정). ⚠️ 공유 DB 는 코드와 따로 배포된다 — 시드에 데이터를 더했으면 db:sync:remote. 원격 좌표는 .env.turso 에만. 시드 구성이 바뀌면 SCHEMA_VERSION(현재 5) + 개발 서버 재시작.",
+    "next_step": "(남은 계획 없음 — 사용자 요청 대기)",
+    "note": "✅ 2026-08-18 전부 완료: P9.s1~s4 · P10.s1~s9. 라우트 핸들러 테스트 20개(권한을 집행하는 지점) · CI 런타임 스모크 · private-history pre-push 차단 · 문서 정합성(자동 주입되는 .claude/rules/bff.md 를 현행 규약으로 교체, Spring 전제는 역사로 분리) · 접근성 측정과 수정(전 화면 Lighthouse 접근성 100·권장사항 100·SEO 100, 데스크톱 성능 97~99) · 반응형. 테스트 162개 · npm run verify/build/smoke/measure 전부 통과. 🔴 사용자 대기: git push origin main (이번 세션 커밋 5개가 아직 라이브에 없다). ⚠️ 시드에 데이터를 더했으면 npm run db:sync:remote — 공유 DB 는 코드와 따로 배포된다. ⚠️ npm run measure 는 사람이 돌린다(CI 에 넣으면 성능 점수 변동으로 깨지는 게이트가 된다).",
     "compact_after_each_step": true
   },
   "closed_items": [

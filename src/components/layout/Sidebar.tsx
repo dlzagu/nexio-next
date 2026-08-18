@@ -26,21 +26,25 @@ const INTERNAL_NAV = [
   { href: "/customers", label: "고객사 관리", icon: Building2 },
 ] as const;
 
-export function Sidebar({
+/**
+ * 사이드바 알맹이. 데스크톱의 고정 사이드바와 좁은 화면의 서랍이 **같은 것**을 쓴다 —
+ * 메뉴를 두 벌로 두면 하나에만 항목이 추가되는 날이 온다.
+ */
+export function SidebarBody({
   user,
   openCount,
+  onNavigate,
 }: {
   user: User;
   /** null = 카운트를 못 읽었다 (0 건과 구분한다) */
   openCount: number | null;
+  /** 서랍에서 눌렀을 때 닫기 — 데스크톱에서는 없다 */
+  onNavigate?: () => void;
 }) {
   const pathname = usePathname();
 
   return (
-    <aside
-      className="border-line bg-surface flex shrink-0 flex-col border-r"
-      style={{ width: "var(--sidebar-w)" }}
-    >
+    <>
       <div className="border-line-subtle flex h-[52px] items-center gap-2.5 border-b px-4">
         <span
           aria-hidden
@@ -66,6 +70,7 @@ export function Sidebar({
                 href={href}
                 className="nav-i"
                 data-active={active}
+                onClick={onNavigate}
               >
                 <Icon size={15} aria-hidden />
                 <span className="flex-1">{label}</span>
@@ -88,6 +93,28 @@ export function Sidebar({
           </p>
         </div>
       </div>
+    </>
+  );
+}
+
+/**
+ * 데스크톱 사이드바. 좁은 화면에서는 **감춘다** — 216px 를 고정으로 차지하면
+ * 375px 화면에서 본문이 159px 만 남아 아무것도 읽을 수 없다(실측).
+ * 그 폭에서는 상단바의 메뉴 버튼이 같은 내용을 서랍으로 연다.
+ */
+export function Sidebar({
+  user,
+  openCount,
+}: {
+  user: User;
+  openCount: number | null;
+}) {
+  return (
+    <aside
+      className="border-line bg-surface hidden shrink-0 flex-col border-r md:flex"
+      style={{ width: "var(--sidebar-w)" }}
+    >
+      <SidebarBody user={user} openCount={openCount} />
     </aside>
   );
 }

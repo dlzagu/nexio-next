@@ -829,3 +829,60 @@ select.input {
   background: var(--bg-selected);
   color: var(--accent-text);
 }
+
+/* ==========================================================================
+   반응형 — 좁은 화면 (LAYER 2)
+
+   데스크톱 우선으로 만든 화면이라, 좁아질 때 **무엇을 접을지**만 정한다.
+   숨기는 기준은 "그 열이 없어도 행을 식별할 수 있는가"다.
+   ========================================================================== */
+
+/* 좁은 화면의 주 메뉴 서랍 — 데스크톱 사이드바와 같은 내용을 왼쪽에서 연다 */
+.drawer {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: var(--z-sheet);
+  display: flex;
+  flex-direction: column;
+  width: min(var(--sidebar-w), 84vw);
+  background: var(--bg-surface);
+  border-right: var(--bw-hair) solid var(--border-default);
+  box-shadow: var(--shadow-4);
+  animation: nx-drawer-in var(--dur-sheet) var(--ease-out);
+}
+@keyframes nx-drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+/* 가로로 넘치는 표는 **표만** 스크롤한다 — 페이지가 통째로 흔들리면 위치를 잃는다 */
+.scroll-x {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+/* 서랍을 연 채 창을 넓히면 데스크톱 사이드바와 겹친다 — 폭이 넓어지면 사라진다 */
+@media (min-width: 768px) {
+  .drawer,
+  .ovl-nav {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  /* 11px 은 모바일에서 '읽을 수 없음' 판정을 받는다(Lighthouse font-size).
+     밀도 토큰을 한 단계 올려 **전 화면에 한 번에** 적용한다 — 컴포넌트마다 고치지 않는다 */
+  :root {
+    --fs-11: 12px;
+    --lh-11: 17px;
+  }
+
+  /* 손가락으로 누르는 화면에서는 행·컨트롤이 조금 더 커야 한다 */
+  .tbl td {
+    height: calc(var(--row-h) + 6px);
+  }
+}

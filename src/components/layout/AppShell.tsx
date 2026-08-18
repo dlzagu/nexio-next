@@ -86,7 +86,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-dvh">
       <Sidebar user={user} openCount={openCount} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar user={user} personas={personas} />
+        <Topbar user={user} personas={personas} openCount={openCount} />
         <main className="min-w-0 flex-1">{children}</main>
       </div>
     </div>

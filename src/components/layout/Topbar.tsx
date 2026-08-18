@@ -5,6 +5,7 @@ import { Monitor, Moon, Rows2, Rows3, Rows4, Sun, UserCog } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import { useCallback, useState, useTransition } from "react";
 import { Notice } from "@/components/ui/EmptyState";
+import { MobileNav } from "./MobileNav";
 import { cn } from "@/lib/cn";
 import { USER_ROLE_LABEL } from "@/lib/codes";
 import type { Persona } from "@/lib/session";
@@ -42,9 +43,12 @@ const SWITCH_ERROR: Record<string, string> = {
 export function Topbar({
   user,
   personas,
+  openCount,
 }: {
   user: User;
   personas: Persona[];
+  /** 좁은 화면의 서랍 메뉴가 사이드바와 같은 뱃지를 보여준다 */
+  openCount: number | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -101,34 +105,41 @@ export function Topbar({
 
   return (
     <header className="border-line bg-surface/85 sticky top-0 z-[var(--z-sticky)] flex h-[52px] shrink-0 items-center gap-2 border-b px-4 backdrop-blur">
+      {/* 좁은 화면에서는 사이드바가 감춰지므로 여기가 유일한 주 메뉴 통로다 */}
+      <MobileNav user={user} openCount={openCount} />
+
       <div className="flex-1" />
 
       <NotificationBell />
 
       {/* 밀도 — 하루 8시간 켜놓는 도구라 사용자가 고를 수 있어야 한다 (P8) */}
-      <div className="seg" role="group" aria-label="표시 밀도">
-        {(
-          [
-            ["compact", Rows4, "촘촘히"],
-            ["default", Rows3, "기본"],
-            ["relaxed", Rows2, "넉넉히"],
-          ] as const
-        ).map(([v, Icon, label]) => (
-          <button
-            key={v}
-            type="button"
-            title={label}
-            aria-label={label}
-            aria-pressed={density === v}
-            data-state={density === v ? "active" : "inactive"}
-            className="seg-i px-2"
-            onClick={() => {
-              setDensity(v);
-            }}
-          >
-            <Icon size={13} aria-hidden />
-          </button>
-        ))}
+      {/* ⚠️ .seg 의 display:flex 는 레이어 밖 CSS 라 Tailwind 의 `hidden` 을 이긴다 —
+          클래스를 같이 붙이면 안 숨는다. 감싸는 요소에서 접는다(contents 라 배치는 그대로). */}
+      <div className="hidden sm:contents">
+        <div className="seg" role="group" aria-label="표시 밀도">
+          {(
+            [
+              ["compact", Rows4, "촘촘히"],
+              ["default", Rows3, "기본"],
+              ["relaxed", Rows2, "넉넉히"],
+            ] as const
+          ).map(([v, Icon, label]) => (
+            <button
+              key={v}
+              type="button"
+              title={label}
+              aria-label={label}
+              aria-pressed={density === v}
+              data-state={density === v ? "active" : "inactive"}
+              className="seg-i px-2"
+              onClick={() => {
+                setDensity(v);
+              }}
+            >
+              <Icon size={13} aria-hidden />
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="seg" role="group" aria-label="테마">
@@ -173,7 +184,8 @@ export function Topbar({
           <Popover.Content
             align="end"
             sideOffset={6}
-            className="border-line bg-surface shadow-3 z-[var(--z-dropdown)] w-[280px] rounded-md border p-2"
+            collisionPadding={8}
+            className="border-line bg-surface shadow-3 z-[var(--z-dropdown)] w-[min(280px,calc(100vw-16px))] rounded-md border p-2"
           >
             <p className="text-11 text-fg-subtle px-2 pt-1 pb-2 leading-relaxed">
               역할 전환 데모입니다. 페르소나는 전부 시드 데이터의 가상 인물이며,

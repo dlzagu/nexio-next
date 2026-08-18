@@ -95,7 +95,7 @@ export function CustomersView({
     ].filter(Boolean) as string[];
 
   return (
-    <div className="mx-auto flex max-w-[1000px] flex-col gap-4 p-5">
+    <div className="mx-auto flex max-w-[1000px] flex-col gap-4 p-3 sm:p-5">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-20 text-fg-strong font-semibold tracking-tight">
@@ -123,16 +123,17 @@ export function CustomersView({
 
       <Card>
         <CardHeader title="고객사" hint={`${rows.length}곳`} />
-        <CardBody className="p-0">
+        <CardBody className="scroll-x p-0">
           <table className="tbl">
             <thead>
               <tr>
                 <th>고객사</th>
                 <th>코드</th>
-                <th className="num">티켓</th>
-                <th className="num">미완료</th>
-                <th className="num">시스템</th>
-                <th>설정</th>
+                {/* 보조 지표는 좁은 화면에서 접는다 — 고객사·코드·조작만 있으면 행을 알아본다 */}
+                <th className="num hidden md:table-cell">티켓</th>
+                <th className="num hidden md:table-cell">미완료</th>
+                <th className="num hidden lg:table-cell">시스템</th>
+                <th className="hidden lg:table-cell">설정</th>
                 {/* 빈 헤더는 셀이 어느 열인지 알 수 없게 만든다 — 보이지 않게 이름만 붙인다 */}
                 <th>
                   <span className="sr-only">작업</span>
@@ -158,10 +159,12 @@ export function CustomersView({
                     ) : null}
                   </td>
                   <td className="mono text-fg-muted">{r.custCode}</td>
-                  <td className="num">{r.tickets.toLocaleString("ko-KR")}</td>
-                  <td className="num">{r.openTickets}</td>
-                  <td className="num">{r.systems}</td>
-                  <td className="text-11 text-fg-muted">
+                  <td className="num hidden md:table-cell">
+                    {r.tickets.toLocaleString("ko-KR")}
+                  </td>
+                  <td className="num hidden md:table-cell">{r.openTickets}</td>
+                  <td className="num hidden lg:table-cell">{r.systems}</td>
+                  <td className="text-11 text-fg-muted hidden lg:table-cell">
                     {flags(r).join(" · ") || "-"}
                   </td>
                   <td className="text-right">
@@ -216,7 +219,7 @@ export function CustomersView({
         }
       >
         <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1">
               <span className="label">고객사 코드</span>
               <input
