@@ -45,7 +45,7 @@
     {
       "id": "P1",
       "name": "화면 인벤토리 (읽기 전용)",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [],
       "description": "MVP 3화면의 필드·액션·API·권한분기를 표로 추출. 디자인 시스템의 컴포넌트 목록이 여기서 나온다.",
       "steps": [
@@ -137,8 +137,9 @@
         },
         {
           "id": "s7",
-          "name": "세션 의존 실측 — JWT 만으로 API 호출 가능한지 (사용자 확인 필요)",
-          "status": "pending",
+          "name": "세션 의존 실측 — JWT 만으로 API 호출 가능한지 (⛔ 폐기)",
+          "status": "obsolete",
+          "obsolete_reason": "ADR-0004 로 Spring 백엔드 연결 자체가 폐기됐다(자체 SQLite + 가상 시드). 확인할 대상이 사라졌으므로 더 이상 과제가 아니다. 2026-08-18 정리.",
           "logic": [
             "일부 엔드포인트가 HttpSession 을 직접 읽음(getEcoLineList(search, session)) → BFF 구현 방식을 가르는 분기점",
             "DB 조회로는 확인 불가 — 개발서버 런타임 호출이 필요하므로 사용자가 실행"
@@ -373,7 +374,7 @@
     {
       "id": "P6",
       "name": "MVP 화면 구현",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "P5"
       ],
@@ -471,11 +472,12 @@
         {
           "id": "s5",
           "name": "Tiptap 리치 텍스트 에디터 도입",
-          "status": "pending",
+          "status": "done",
+          "file": "src/components/ui/RichEditor.tsx",
           "logic": [
-            "읽기(sanitize + .prose-nx)는 완료. 편집기는 미도입 — 댓글·처리내역 입력이 지금은 textarea",
-            "tech-stack.md 선정 근거 유지. 기존 summernote HTML 손실 여부를 실데이터로 먼저 검증할 것",
-            "⚠️ 저장값이 이스케이프된 HTML 이라는 실측(ADR-0002)을 에디터 초기값 주입에 반영해야 한다"
+            "⚠️ 2026-08-18 실측 정정 — 이 단계는 이미 끝나 있었는데 pending 으로 남아 있었다. @tiptap/{react,starter-kit,pm,extensions} 설치돼 있고 RichEditor.tsx 를 Composer(댓글)·SolutionPanel(처리결과 7필드)이 쓴다",
+            "적용 범위 정본 = '처리결과 필드 + 댓글'(tech-stack.md). 신청 폼의 증상·요청내용이 textarea 인 것은 범위 밖 — 평문으로 받아 저장 시 <p> 로 감싼다(request-body.ts)",
+            "이미지 붙여넣기 가드는 붙여넣기 시점에 즉시 경고(원본 summernote 는 저장 후에야 알려줬다)"
           ]
         }
       ]
@@ -598,6 +600,67 @@
           ]
         }
       ]
+    },
+    {
+      "id": "P9",
+      "name": "후속 과제 — 감사에서 확정된 27건 (2026-08-18)",
+      "status": "pending",
+      "depends_on": [
+        "P8"
+      ],
+      "description": "P6.s4·P8 을 배포한 뒤 두 차례 다중 에이전트 감사(push 전 11건 확정·이후 27건 확정)에서 나온 잔여 과제. 각 항목은 '반증 시도를 통과한 것'만 남겼다. 실행 순서 = s1(라이브 결함) → s2(반쪽 기능) → s3(문서 정합성) → s4(안전장치).",
+      "steps": [
+        {
+          "id": "s1",
+          "name": "🔴 라이브에 나가 있는 결함 4건 — 먼저 고친다",
+          "status": "pending",
+          "logic": [
+            "① src/app/requests/page.tsx:17-33 의 NX-DEBUG try/catch 제거 — 조회 화면 전체를 감싸 SSR 오류를 삼키고 err.stack 을 <pre> 로 200 응답에 실어 보낸다. 주석 자체가 '원인 확정 즉시 제거'라 적혀 있고 원인은 ADR-0005 에서 12커밋 전에 확정됐다. CLAUDE.md 절대 규칙(try-catch 로 덮기 금지) 정면 위반. 같이 들어온 RequestsView 동적 import 우회도 함께 원복(형제 화면 board·notices 는 static import)",
+            "② src/lib/permissions.ts:44 fail-open — `if (config && !config.usesApproval) return false;` 는 config 가 null 이면 검사를 건너뛴다. 같은 파일 64·90행은 `!config?.usesTestStage` 로 fail-closed 다. 승인·반려만 축이 다르다 → `if (!config?.usesApproval) return false;` 로 통일. 미등록 고객사에서 승인권자가 아무 대기건이나 승인할 수 있다",
+            "③ 상세를 열어도 미읽음이 안 내려간다 — 서버는 이미 건별 읽음을 지원한다(POST /api/notifications 가 body.echoNum → markNotificationsRead(user, echoNum)). 그 인자를 넘기는 호출자가 코드베이스에 0개. DetailSheet 열림/닫힘 또는 NotificationBell.go() 에 배선만 붙이면 된다(서버 수정 불필요). 지금은 댓글을 다 읽어도 목록 빨간 점·대시보드 카드·종 배지가 그대로 남는다",
+            "④ 미읽음 축 불일치 — 알림(notifications.ts:62)과 댓글 조회(getComments)는 내부 전용을 거르는데, 목록 뱃지(tickets.ts:106 lastCommentId)와 대시보드 집계(dashboard.ts:87)는 안 거른다 → 고객사에게 '지울 방법이 없는 미읽음 점'이 남고 종 배지와 숫자가 갈라진다"
+          ],
+          "verify": [
+            "고친 뒤 tests 에 재현 케이스 추가 — ①은 라우트 200/500 구분, ②는 config=null 케이스, ③④는 읽음선 일치"
+          ]
+        },
+        {
+          "id": "s2",
+          "name": "반쪽 기능 — 구현하거나 걷어낸다 (둘 중 하나로 확정)",
+          "status": "pending",
+          "logic": [
+            "🔴 첨부파일(L) — 신청 폼의 '클릭해서 파일 선택'은 파일명 문자열만 state 에 담고 POST 본문에 싣지 않는다. zod 스키마·라우트·시드 스키마 어디에도 첨부가 없다(grep attach|upload|multipart = 0건). 게다가 '붙여넣은 이미지는 저장 안 되니 파일로 첨부하라'는 경고 3곳(RequestForm·Composer·SolutionPanel)이 가리키는 대안이 바로 이 죽은 경로다. 선택 = 저장 경로 구현 or 컨트롤 제거 + '첨부 미지원'을 ADR/README 에 명시",
+            "대시보드 카드 ↔ 링크 불일치 — '미읽음 댓글' 카드는 미읽음 조건을 URL 로 못 넘긴다(TicketFilters 에 미읽음 필터 없음), '내 미처리' 카드는 openFg 로 세고 링크는 view=mine(종료건 포함)이라 25 vs 167 로 갈린다. 정답이 이미 dashboard.ts:51-56 mineListFilters 에 있다 → view=open + assignee/requester 로 링크 교체 (실측 확인됨)",
+            "meta.ts:117-120 · AppShell.tsx:22-27 의 조용한 catch — 콤보박스 목록·사이드바 카운트가 조회 실패를 빈 값/0 으로 삼키고 로그도 안 남긴다. AppShell 은 바로 아래에서 '원인을 감추지 않는다'고 선언해 놓고 자기 카운트는 삼킨다",
+            "미사용 자산 정리 — DetailSheet.tsx:618 OpenInNewTab 은 export 만 되고 import 0건 · RequestFilters.tsx:198 의 '이관 데이터 포함 (18,274건)' 은 원본 운영 DB 수치 하드코딩(현재 시드는 1,300) · 설치만 되고 import 0건인 의존성 3종(@tanstack/react-query · nuqs · sonner) → 쓰거나 지운다. ⚠️ 의존성 제거 후 npm run lock:fix 필수"
+          ]
+        },
+        {
+          "id": "s3",
+          "name": "문서 정합성 — 코드보다 낡아 다음 세션을 속이는 곳",
+          "status": "pending",
+          "logic": [
+            "🔴 .claude/rules/bff.md — src/app/api/** 를 만질 때 자동 주입되는데 내용이 전부 Spring 시대다(세션 쿠키 릴레이·redirect manual·302 처리). 실제 라우트 6개는 자체 SQLite 를 직접 읽는다 → 현행 쓰기 규약(canDo 재판정 · 202 계약 · write() 관문)으로 교체. 자동 주입이라 방치하면 매번 틀린 지침이 들어온다",
+            "CLAUDE.md:86 '테넌트 격리·비공개 제한은 Spring 이 fail-closed 로 처리 중' → 실제로는 우리 scopeClause(tickets.ts:121)가 한다. HOW NOT 1~3행(BFF 세션·redirect·CSRF)도 Spring 전제라 '역사 기록'으로 분리",
+            "docs/ARCHITECTURE.md — 쓰기 미구현(32행)·테스트 71개(41행)·60개(69행)·isomorphic-dompurify(74행)·'아직 도입하지 않은 것'(78행) 전부 낡음. 실제 106개 · xss · 쓰기 구현됨",
+            "ADR-0001·ADR-0002 상태 헤더를 '대체됨(ADR-0004)'으로 명시 — 지금은 채택 상태로 보인다",
+            "docs/design/permissions-spec.md — operCompany 격리 축이 미이식인데 그렇게 안 적혀 있고 §5 A안 근거가 그 격리에 기대고 있다",
+            "bff-spec.md · api-map.md 상단에 '폐기된 전제(Spring 연동)' 배너",
+            "open_items 정리 — Spring 전제 5건은 '원본 관찰 기록'으로 분리, 코드가 이미 답한 3건(정렬 한계 표기·취소 권유 구현 방식 등)은 결정문으로 닫기"
+          ]
+        },
+        {
+          "id": "s4",
+          "name": "안전장치 — 같은 사고를 기계가 막게 한다",
+          "status": "pending",
+          "logic": [
+            "커밋 작성자 게이트를 README·ADR-0005 에 기록 — 2026-08-18 배포 차단의 원인이었고, 해결책(git config --local user.email)이 클론에 따라오지 않아 다른 환경에서 재발한다. 증상은 'push·CI 는 green 인데 라이브만 옛 빌드'",
+            "private-history 가 origin 으로 새는 경로를 훅으로 차단 — 지금은 사람 기억이 유일한 방벽이다(.git/config 에 해당 브랜치 추적 설정도 없다). ⛔ 이 브랜치와 커밋 2f5f81c·96062da 에 익명화 전 실 DB명·사명·사내 경로가 있다",
+            "CI 에 런타임 스모크 추가 — 지금은 npm ci → verify → format:check → build 로 끝나 앱을 한 번도 실행하지 않는다. 이번 세션의 500(no such column NTT_CN)·하이드레이션 깨짐은 빌드로는 안 잡힌다. next start 후 주요 경로 HTTP 200 확인이면 충분",
+            "라우트 핸들러 테스트 — 106개가 전부 lib 단위이고 권한을 실제로 집행하는 지점(라우트의 canDo 재판정·외부업체 신청 금지·소속 교차 조회)은 테스트가 0건이다"
+          ]
+        }
+      ]
     }
   ],
   "non_goals": [
@@ -620,8 +683,8 @@
     "canApproveRequest 를 서버가 어떤 규칙으로 계산하는지 — BFF 가 그대로 전달만 하면 되는지"
   ],
   "session_continuation": {
-    "next_step": "P6.s5",
-    "note": "✅ 라이브 반영 완료(2026-08-18, 05f2aca) — /board·/notices·알림 전부 200. ⚠️ 한동안 Vercel 이 'Deployment was blocked' 로 막혀 있었다(31f048b~617e4a7): 로컬 git 이메일이 다른 GitHub 계정(dlzagu2)에 묶여 있었고 repo·Vercel 소유자는 dlzagu 라, Hobby 플랜이 private repo 의 타인 커밋을 거부했다. 해결 = 이 저장소의 user.email 을 dlzagu 의 GitHub attribution 주소로 고정(`git config --local`). ⛔ 그 대안이던 'repo 를 public 으로' 는 금지 — 커밋 2f5f81c·96062da 에 익명화 전 실 DB명·사명·사내 경로가 남아 있다. ✅ 쓰기 경로 완료(P6.s4 — ADR-0006) + 원본 메뉴 3종 이식 완료(P8 — ADR-0007: 업무 현황 보드 /board · 공지사항 /notices · 상단 알림센터). 화면 3 → 6 + 알림, 새 의존성 0개, 새 테이블 0개(공지 본문 컬럼 1개만). 남은 것: ① P6.s5 Tiptap 편집기 ② P1.s7 ③ 배포 반영(라이브에 아직 안 올라감). ⚠️ 쓰기는 여전히 기본 차단 — 로컬에서 켜려면 .env.local 에 ALLOW_DEV_WRITES=true (또는 .claude/launch.json 의 'nexio-next-write' 구성으로 실행). ⚠️ 시드 스키마를 바꾸면 SCHEMA_VERSION 을 올리고 개발 서버를 재시작해야 한다(커넥션이 전역 캐시된다). ⚠️ 의존성 변경 후엔 npm run lock:fix. 검증: npm run verify(106개) · npm run build · /api/diag.",
+    "next_step": "P9.s1",
+    "note": "✅ 여기까지 완료 — 쓰기 경로(P6.s4/ADR-0006) · 원본 메뉴 3종 이식(P8/ADR-0007) · Tiptap(P6.s5 — 이미 돼 있던 것을 2026-08-18 확인) · main push · 라이브 반영(05f2aca, /board·/notices·알림 전부 200). 테스트 106개 · build green. ▶ 다음은 P9.s1 — 라이브에 나가 있는 결함 4건이다. 그중 src/app/requests/page.tsx 의 NX-DEBUG try/catch 는 조회 화면의 SSR 오류를 삼켜 스택트레이스를 200 으로 내보내는 상태이고 CLAUDE.md 절대 규칙 위반이라 가장 먼저 지운다. ⚠️ 이 저장소에서 커밋할 때 user.email 이 반드시 dlzagu 계정이어야 배포된다(git config --local 로 고정해 뒀다. 다른 환경에서 클론하면 재발 — 증상은 push·CI 는 green 인데 라이브만 옛 빌드). ⚠️ repo 는 private 이고 ⛔ public 전환 금지 — 커밋 2f5f81c·96062da 에 익명화 전 실 DB명·사명·사내 경로가 남아 있다. ⚠️ 시드 스키마를 바꾸면 SCHEMA_VERSION 을 올리고 개발 서버를 재시작한다(커넥션 전역 캐시). ⚠️ 의존성 변경 후 npm run lock:fix. 검증: npm run verify(106개) · npm run build · /api/diag · 쓰기는 .env.local 의 ALLOW_DEV_WRITES=true 또는 launch.json 의 nexio-next-write 구성.",
     "compact_after_each_step": true
   }
 }
