@@ -18,7 +18,8 @@
     "verify": "npm run lint && npm run typecheck && npm run test",
     "lock:fix": "node scripts/sync-lock-wasm-deps.mjs",
     "db:reset": "node -e \"require('fs').rmSync('.data',{recursive:true,force:true})\"",
-    "db:seed:remote": "node --env-file-if-exists=.env.turso scripts/seed-remote.mjs"
+    "db:seed:remote": "node --env-file-if-exists=.env.turso scripts/seed-remote.mjs",
+    "db:verify:remote": "node --env-file-if-exists=.env.turso scripts/verify-remote.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.5.7",

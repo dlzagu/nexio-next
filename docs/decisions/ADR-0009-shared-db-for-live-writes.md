@@ -88,4 +88,10 @@ ADR-0004 의 약속은 **로컬에 한해** 유지된다.
 
 3. Vercel 프로젝트 환경변수에 같은 값 2개 추가 → 재배포
 
-확인: `/api/diag` 의 `db.mode` 가 `shared(libSQL)`, `writes.allowed` 가 `true`.
+확인:
+
+- `npm run db:verify:remote` — 앱이 기대는 SQLite 규칙을 원격이 지키는지 5가지로 검사한다.
+  특히 **GROUP BY 의 bare column 이 MAX() 행을 따라가는 성질**(알림센터가 여기 기댄다)은
+  표준 SQL 이 아니라 SQLite 의 동작이라, 조용히 다르면 엉뚱한 글이 대표로 뜬다.
+  (2026-08-18 Turso 실측: 5개 항목 전부 동일)
+- 라이브에서 `/api/diag` 의 `db.mode` 가 `shared(libSQL)`, `writes.allowed` 가 `true`.
