@@ -717,4 +717,3 @@ function Dot() {
     </span>
   );
 }
-

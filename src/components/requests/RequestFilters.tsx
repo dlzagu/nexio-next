@@ -208,7 +208,10 @@ export function RequestFilters({
               type="checkbox"
               checked={get("unread") === "1"}
               onChange={(e) =>
-                set({ unread: e.target.checked ? "1" : null }, { resetPage: true })
+                set(
+                  { unread: e.target.checked ? "1" : null },
+                  { resetPage: true },
+                )
               }
             />
             안 읽은 글이 있는 요청만

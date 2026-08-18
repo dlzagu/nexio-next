@@ -27,7 +27,13 @@ import {
   getTicket,
   listTickets,
 } from "@/lib/data/tickets";
-import { devWritesAllowed, select, write, WriteDisabledError } from "@/lib/db";
+import {
+  devWritesAllowed,
+  select,
+  write,
+  writeDisabledReason,
+  WriteDisabledError,
+} from "@/lib/db";
 
 const filters = (over: Partial<TicketFilters> = {}): TicketFilters => ({
   view: "all",
@@ -440,19 +446,45 @@ describe("신청 저장", () => {
   });
 });
 
-describe("쓰기 기본값", () => {
-  it("환경변수가 없으면 **허용**이다 (false 일 때만 잠근다)", () => {
-    const prev = process.env.ALLOW_DEV_WRITES;
+describe("쓰기 기본값 — 저장소가 정한다", () => {
+  const withEnv = (
+    env: Record<string, string | undefined>,
+    run: () => void,
+  ) => {
+    const prev = { ...process.env };
     try {
-      delete process.env.ALLOW_DEV_WRITES;
-      expect(devWritesAllowed()).toBe(true);
-      process.env.ALLOW_DEV_WRITES = "false";
-      expect(devWritesAllowed()).toBe(false);
-      // 오타·아무 값이나 들어와도 잠기지 않는다 — 잠금은 명시적일 때만
-      process.env.ALLOW_DEV_WRITES = "yes";
-      expect(devWritesAllowed()).toBe(true);
+      for (const [k, v] of Object.entries(env)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      run();
     } finally {
-      process.env.ALLOW_DEV_WRITES = prev;
+      process.env.ALLOW_DEV_WRITES = prev.ALLOW_DEV_WRITES;
+      process.env.VERCEL = prev.VERCEL;
+      if (prev.VERCEL === undefined) delete process.env.VERCEL;
     }
+  };
+
+  it("로컬(파일 DB)에서는 환경변수 없이도 저장된다", () => {
+    withEnv({ ALLOW_DEV_WRITES: undefined, VERCEL: undefined }, () => {
+      expect(devWritesAllowed()).toBe(true);
+    });
+  });
+
+  it("서버리스(:memory:)에서는 잠긴다 — 인스턴스마다 DB 가 달라 저장이 어긋난다", () => {
+    withEnv({ ALLOW_DEV_WRITES: undefined, VERCEL: "1" }, () => {
+      expect(devWritesAllowed()).toBe(false);
+      // 안내 문구가 "켜세요"가 아니라 **왜 잠갔는지**를 말한다
+      expect(writeDisabledReason()).toContain("인스턴스");
+    });
+  });
+
+  it("환경변수를 주면 그 값이 이긴다 (공유 DB 를 붙이면 배포에서도 연다)", () => {
+    withEnv({ ALLOW_DEV_WRITES: "true", VERCEL: "1" }, () => {
+      expect(devWritesAllowed()).toBe(true);
+    });
+    withEnv({ ALLOW_DEV_WRITES: "false", VERCEL: undefined }, () => {
+      expect(devWritesAllowed()).toBe(false);
+    });
   });
 });

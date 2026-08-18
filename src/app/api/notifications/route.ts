@@ -3,7 +3,7 @@ import {
   listNotifications,
   markNotificationsRead,
 } from "@/lib/data/notifications";
-import { devWritesAllowed } from "@/lib/db";
+import { devWritesAllowed, writeDisabledReason } from "@/lib/db";
 import { currentUser } from "@/lib/session";
 
 /** 알림 목록 — 내 건에 달린, 내가 아직 안 본 글 */
@@ -26,8 +26,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         code: "WRITE_DISABLED",
-        message:
-          "데모 DB 쓰기가 잠겨 있어 읽음 상태를 저장하지 못했습니다 (ALLOW_DEV_WRITES=false).",
+        message: `읽음 상태를 저장하지 못했습니다. ${writeDisabledReason()}`,
       },
       { status: 202 },
     );

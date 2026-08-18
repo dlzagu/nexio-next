@@ -87,18 +87,32 @@ export async function selectOne<T = Record<string, unknown>>(
 }
 
 /**
- * 데모 DB 쓰기 허용 플래그. **기본 허용**이고, `ALLOW_DEV_WRITES=false` 일 때만 잠근다.
+ * 데모 DB 쓰기 허용 여부. **명시하지 않으면 저장소가 정한다** — `dbPath()` 와 같은 갈림길이다.
  *
- * 원래는 반대(기본 차단)였다. 그건 회사 개발 DB 를 직접 보던 시절(ADR-0002)의 안전장치인데,
- * ADR-0004 로 자체 SQLite + 전부 가상 시드가 되면서 지킬 대상이 사라졌다 —
- * 남은 건 "저장을 눌러도 아무 일도 일어나지 않는 데모"뿐이었다.
+ *   로컬(파일 DB)   → 허용. 프로세스가 하나뿐이라 저장한 것이 그대로 다시 보인다.
+ *   서버리스(:memory:) → 잠금. 인스턴스마다 **DB 가 따로** 있어서, A 에 저장하고 B 에서 읽으면
+ *                        방금 만든 건이 없다(실측: 같은 건을 세 번 읽어 2회 404).
+ *                        "저장은 됐는데 사라진다"는 202 안내보다 더 고장 나 보인다.
  *
- * ⚠️ 서버리스(:memory:)에서는 저장이 **그 인스턴스 수명까지만** 산다. 콜드스타트가 나면
- *    시드가 다시 깔린다 — 데모의 성질이지 버그가 아니다(ADR-0004).
- *    잠그려면 `ALLOW_DEV_WRITES=false`. 관문(write) 안쪽에서 막으므로 라우트가 잊어도 안 뚫린다.
+ * `ALLOW_DEV_WRITES` 를 주면 그 값이 이긴다 (`false` = 잠금, 그 외 = 허용).
+ * 공유 DB 를 붙이면 배포에서도 `true` 로 열면 된다.
+ *
+ * 옛 기본값(무조건 차단)은 회사 개발 DB 를 직접 보던 시절(ADR-0002)의 안전장치였다.
+ * ADR-0004 로 자체 SQLite + 전부 가상 시드가 되면서 지킬 대상이 사라졌다.
+ * 판정은 `write()` **관문 안쪽**에서 한 번 더 하므로 라우트가 게이트를 잊어도 안 뚫린다.
  */
 export function devWritesAllowed(): boolean {
-  return process.env.ALLOW_DEV_WRITES !== "false";
+  const flag = process.env.ALLOW_DEV_WRITES;
+  if (flag) return flag !== "false";
+  return !process.env.VERCEL;
+}
+
+/** 왜 잠겼는지. 화면이 202 와 함께 보여 준다 — "켜세요"가 답이 아닌 경우가 있다 */
+export function writeDisabledReason(): string {
+  if (process.env.VERCEL && !process.env.ALLOW_DEV_WRITES) {
+    return "라이브 데모는 요청마다 다른 인스턴스가 응답할 수 있고 데모 DB 가 인스턴스 메모리에 있어, 저장해도 다음 조회에서 사라집니다. 그래서 저장을 잠가 두었습니다 — 로컬에서 실행하면 실제로 저장됩니다.";
+  }
+  return "데모 DB 쓰기가 잠겨 있습니다 (ALLOW_DEV_WRITES=false).";
 }
 
 export class WriteDisabledError extends Error {

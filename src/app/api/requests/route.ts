@@ -8,7 +8,7 @@ import {
 } from "@/lib/data/attachments";
 import { createTicket } from "@/lib/data/mutations";
 import { getTicket } from "@/lib/data/tickets";
-import { devWritesAllowed, select } from "@/lib/db";
+import { devWritesAllowed, select, writeDisabledReason } from "@/lib/db";
 import { attachmentsInputSchema, requestFormSchema } from "@/lib/schemas";
 import { currentUser, loadCustomerConfig } from "@/lib/session";
 
@@ -130,8 +130,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         code: "WRITE_DISABLED",
-        message:
-          "입력 검증과 권한 판정은 통과했지만, 데모 DB 쓰기가 잠겨 있어(ALLOW_DEV_WRITES=false) 저장되지 않았습니다.",
+        message: `입력 검증과 권한 판정은 통과했습니다. ${writeDisabledReason()}`,
       },
       { status: 202 },
     );

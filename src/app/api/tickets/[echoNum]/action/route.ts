@@ -7,7 +7,7 @@ import {
 } from "@/lib/data/attachments";
 import { applyAction, UnsupportedActionError } from "@/lib/data/mutations";
 import { getTicket } from "@/lib/data/tickets";
-import { devWritesAllowed } from "@/lib/db";
+import { devWritesAllowed, writeDisabledReason } from "@/lib/db";
 import { actionLabel, canDo } from "@/lib/permissions";
 import { isBlankHtml } from "@/lib/sanitize";
 import { actionSchema } from "@/lib/schemas";
@@ -81,8 +81,7 @@ export async function POST(
     return NextResponse.json(
       {
         code: "WRITE_DISABLED",
-        message:
-          "권한 판정은 통과했지만 데모 DB 쓰기가 잠겨 있습니다 (ALLOW_DEV_WRITES=false).",
+        message: `권한 판정은 통과했습니다. ${writeDisabledReason()}`,
         action,
         echoNum: parsed.data.echoNum,
       },

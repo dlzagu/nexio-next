@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getDashboard } from "@/lib/data/dashboard";
 import { getMeta } from "@/lib/data/meta";
 import { getTicket, listTickets } from "@/lib/data/tickets";
-import { dbHealth, devWritesAllowed } from "@/lib/db";
+import { dbHealth, devWritesAllowed, writeDisabledReason } from "@/lib/db";
 import { currentUser } from "@/lib/session";
 import type { TicketFilters } from "@/lib/types";
 
@@ -25,13 +25,12 @@ export async function GET() {
 
   await step("db", async () => await dbHealth());
 
-  // 쓰기가 되는 상태인가 — 화면이 202 를 돌려줄 때 "왜"를 여기서 확인한다
+  // 쓰기가 되는 상태인가 — 화면이 202 를 돌려줄 때 "왜"를 여기서 확인한다.
+  // ⚠️ `ok` 키를 쓰지 않는다. 아래 allOk 가 그걸 **장애로 읽어** 진단이 500 이 된다
+  //    (잠긴 건 정상 상태다 — 배포 검증이 HTTP 상태로 이뤄지므로 특히 조심).
   out.writes = devWritesAllowed()
-    ? { ok: true, note: "저장·액션·댓글·첨부가 실제로 기록된다" }
-    : {
-        ok: false,
-        note: "ALLOW_DEV_WRITES=false 로 잠겨 있다 (.env.local 또는 배포 환경변수를 확인)",
-      };
+    ? { allowed: true, note: "저장·액션·댓글·첨부가 실제로 기록된다" }
+    : { allowed: false, note: writeDisabledReason() };
 
   const user = await currentUser();
   out.user = user

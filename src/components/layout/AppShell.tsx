@@ -28,7 +28,10 @@ async function openCountFor(user: User): Promise<number | null> {
   try {
     return (await listTickets(OPEN_FILTERS, user)).total;
   } catch (e) {
-    console.error("[sidebar 미완료 카운트]", e instanceof Error ? e.message : e);
+    console.error(
+      "[sidebar 미완료 카운트]",
+      e instanceof Error ? e.message : e,
+    );
     return null;
   }
 }
