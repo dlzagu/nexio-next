@@ -8,6 +8,7 @@ import { cn } from "@/lib/cn";
 import { USER_ROLE_LABEL } from "@/lib/codes";
 import type { User } from "@/lib/types";
 import { notifyPrefChange, usePref } from "@/lib/usePref";
+import { NotificationBell } from "./NotificationBell";
 
 type Theme = "light" | "dark" | "system";
 type Density = "compact" | "default" | "relaxed";
@@ -74,6 +75,8 @@ export function Topbar({
   return (
     <header className="border-line bg-surface/85 sticky top-0 z-[var(--z-sticky)] flex h-[52px] shrink-0 items-center gap-2 border-b px-4 backdrop-blur">
       <div className="flex-1" />
+
+      <NotificationBell />
 
       {/* 밀도 — 하루 8시간 켜놓는 도구라 사용자가 고를 수 있어야 한다 (P8) */}
       <div className="seg" role="group" aria-label="표시 밀도">

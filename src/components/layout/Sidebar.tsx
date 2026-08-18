@@ -2,14 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FilePlus2, LayoutDashboard, ListChecks } from "lucide-react";
+import {
+  FilePlus2,
+  KanbanSquare,
+  LayoutDashboard,
+  ListChecks,
+  Megaphone,
+} from "lucide-react";
 import { USER_ROLE_LABEL } from "@/lib/codes";
 import type { User } from "@/lib/types";
 
 const NAV = [
   { href: "/dashboard", label: "대시보드", icon: LayoutDashboard },
   { href: "/requests", label: "요청 조회", icon: ListChecks },
+  { href: "/board", label: "업무 현황", icon: KanbanSquare },
   { href: "/requests/new", label: "서비스 신청", icon: FilePlus2 },
+  { href: "/notices", label: "공지사항", icon: Megaphone },
 ] as const;
 
 export function Sidebar({

@@ -19,7 +19,7 @@ import {
   type SeedCompany,
   type SeedMember,
 } from "./corpus";
-import { SCHEMA_SQL } from "./schema";
+import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema";
 
 type DB = InstanceType<typeof Database>;
 
@@ -122,16 +122,48 @@ const TICKET_COLS = [
   "TMEMO",
 ] as const;
 
-export function ensureSeed(db: DB): void {
-  const has = db
+const tableCount = (db: DB, name: string) =>
+  (
+    db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name=@n",
+      )
+      .get({ n: name }) as { n: number }
+  ).n;
+
+/** 없으면 null, 버전 테이블 이전에 만들어진 DB 면 0 */
+function schemaVersion(db: DB): number | null {
+  if (tableCount(db, "NX_SCHEMA") === 0) {
+    return tableCount(db, "NX_OPTREPORTD") > 0 ? 0 : null;
+  }
+  const row = db.prepare("SELECT VERSION AS v FROM NX_SCHEMA").get() as
+    { v: number } | undefined;
+  return Number(row?.v ?? 0);
+}
+
+function dropAll(db: DB): void {
+  const rows = db
     .prepare(
-      "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='NX_OPTREPORTD'",
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
     )
-    .get() as { n: number };
-  if (has.n > 0) return;
+    .all() as { name: string }[];
+  for (const { name } of rows) db.exec(`DROP TABLE IF EXISTS "${name}"`);
+}
+
+export function ensureSeed(db: DB): void {
+  const version = schemaVersion(db);
+  if (version === SCHEMA_VERSION) return;
 
   const t0 = Date.now();
+  if (version !== null) {
+    // 스키마가 바뀌었다 — 마이그레이션 대신 통째로 다시 만든다 (전부 가상 시드다)
+    console.info(
+      `[dev-seed] 스키마 버전 ${version} → ${SCHEMA_VERSION}, 데모 DB 를 다시 만든다`,
+    );
+    dropAll(db);
+  }
   db.exec(SCHEMA_SQL);
+  db.prepare("INSERT INTO NX_SCHEMA (VERSION) VALUES (?)").run(SCHEMA_VERSION);
   seed(db);
   const total = (
     db.prepare("SELECT COUNT(*) AS n FROM NX_OPTREPORTD").get() as {
@@ -249,11 +281,17 @@ function seed(db: DB): void {
   }
 
   const insNotice = db.prepare(
-    `INSERT INTO BOARD_DETAIL (NTT_ID, NTT_SJ, NTCR_NM, REG_DT, DELETE_FG, USE_FG)
-     VALUES (?,?,?,?,'N','Y')`,
+    `INSERT INTO BOARD_DETAIL (NTT_ID, NTT_SJ, NTT_CN, NTCR_NM, REG_DT, DELETE_FG, USE_FG)
+     VALUES (?,?,?,?,?,'N','Y')`,
   );
   NOTICES.forEach((n, i) =>
-    insNotice.run(i + 1, n.title, n.author, fmtDT(daysAgo(n.daysAgo))),
+    insNotice.run(
+      i + 1,
+      n.title,
+      paras(n.body),
+      n.author,
+      fmtDT(daysAgo(n.daysAgo)),
+    ),
   );
 
   // ── 티켓 ──────────────────────────────────────────────

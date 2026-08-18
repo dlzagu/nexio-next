@@ -5,7 +5,16 @@
  *
  * 날짜는 TEXT('YYYY-MM-DD HH:MM:SS') — SQLite date 함수·문자열 비교 모두 동작한다.
  */
+/**
+ * 스키마가 바뀔 때마다 올린다. 로컬 `.data/nexio.db` 는 파일로 남아 있어서,
+ * 컬럼을 추가해도 이전 DB 가 그대로 열려 "없는 컬럼" 오류가 난다 →
+ * 버전이 다르면 ensureSeed 가 통째로 다시 만든다 (데모 DB 라 잃을 게 없다).
+ */
+export const SCHEMA_VERSION = 2;
+
 export const SCHEMA_SQL = `
+CREATE TABLE NX_SCHEMA (VERSION INTEGER NOT NULL);
+
 CREATE TABLE COMPANY_MST (
   COMPANY_CODE     TEXT PRIMARY KEY,
   COMPANY_NAME_LOC TEXT,
@@ -114,6 +123,7 @@ CREATE TABLE NX_OPTREPORT_READ_STATE (
 CREATE TABLE BOARD_DETAIL (
   NTT_ID    INTEGER PRIMARY KEY,
   NTT_SJ    TEXT,
+  NTT_CN    TEXT,
   NTCR_NM   TEXT,
   REG_DT    TEXT,
   DELETE_FG TEXT DEFAULT 'N',

@@ -190,21 +190,31 @@ export default async function DashboardPage() {
         <SectionTitle n="③" title="소식" />
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
           <Card>
-            <CardHeader title="공지" />
+            <CardHeader
+              title="공지"
+              action={
+                <Link href="/notices" className="btn btn-ghost btn-xs">
+                  전체 <ArrowRight size={11} aria-hidden />
+                </Link>
+              }
+            />
             {d.notices.length ? (
               <ul className="divide-line-subtle divide-y">
                 {d.notices.map((n) => (
-                  <li
-                    key={n.id}
-                    className="text-13 flex items-center gap-2.5 px-4 py-2.5"
-                  >
-                    <span className="ell min-w-0 flex-1">{n.title}</span>
-                    <span className="text-11 text-fg-subtle shrink-0">
-                      {n.author}
-                    </span>
-                    <span className="num text-11 text-fg-subtle shrink-0">
-                      {fmtDate(n.at)}
-                    </span>
+                  <li key={n.id}>
+                    {/* 막다른 위젯을 만들지 않는다 — 공지도 열어볼 곳이 있어야 한다 */}
+                    <Link
+                      href={`/notices/${n.id}`}
+                      className="hover:bg-hover text-13 flex items-center gap-2.5 px-4 py-2.5"
+                    >
+                      <span className="ell min-w-0 flex-1">{n.title}</span>
+                      <span className="text-11 text-fg-subtle shrink-0">
+                        {n.author}
+                      </span>
+                      <span className="num text-11 text-fg-subtle shrink-0">
+                        {fmtDate(n.at)}
+                      </span>
+                    </Link>
                   </li>
                 ))}
               </ul>
