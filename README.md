@@ -28,7 +28,7 @@ npm run verify     # lint → typecheck → test (완료 판정 기준)
 npm run db:reset   # 데모 DB 삭제 — 다음 실행 때 재시드
 ```
 
-저장(신청 등록·상태 변경·댓글)까지 눌러보려면 `.env.local` 에 `ALLOW_DEV_WRITES=true` 를
+저장(신청 등록·상태 변경·댓글·첨부)은 **바로 됩니다**. 잠그려면 `.env.local` 에 `ALLOW_DEV_WRITES=false` 를
 넣고 재시작하세요. 기본은 꺼져 있고, 꺼진 상태에서는 권한·검증 판정까지만 수행한 뒤
 "여기까지 통과했다"를 화면에 알려줍니다.
 

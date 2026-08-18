@@ -17,7 +17,7 @@ import { currentUser, loadCustomerConfig } from "@/lib/session";
  * 액션 라우트. 클라이언트가 보낸 티켓 상태를 믿지 않고 **서버에서 다시 읽어** 판정한다.
  * canDo() 는 UI 표시용이기도 하지만 여기서도 같은 함수로 한 번 더 거른다 (fail-closed).
  *
- * ⚠️ 데모 DB 쓰기는 기본 차단이다(ALLOW_DEV_WRITES). 꺼져 있으면 권한 판정까지만 하고
+ * ⚠️ 데모 DB 쓰기는 ALLOW_DEV_WRITES=false 로 잠글 수 있다. 잠겨 있으면 권한 판정까지만 하고
  *    202 로 돌려준다 — 판정이 통과했다는 사실은 알려주되 데이터는 건드리지 않는다.
  */
 export async function POST(
@@ -82,7 +82,7 @@ export async function POST(
       {
         code: "WRITE_DISABLED",
         message:
-          "권한 판정은 통과했지만 데모 DB 쓰기가 비활성 상태입니다. 환경변수 ALLOW_DEV_WRITES=true 로 켜세요.",
+          "권한 판정은 통과했지만 데모 DB 쓰기가 잠겨 있습니다 (ALLOW_DEV_WRITES=false).",
         action,
         echoNum: parsed.data.echoNum,
       },

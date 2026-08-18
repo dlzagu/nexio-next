@@ -131,7 +131,7 @@ export async function POST(req: Request) {
       {
         code: "WRITE_DISABLED",
         message:
-          "입력 검증과 권한 판정은 통과했지만 데모 DB 쓰기가 비활성 상태라 저장되지 않았습니다. 환경변수 ALLOW_DEV_WRITES=true 로 켜면 저장됩니다.",
+          "입력 검증과 권한 판정은 통과했지만, 데모 DB 쓰기가 잠겨 있어(ALLOW_DEV_WRITES=false) 저장되지 않았습니다.",
       },
       { status: 202 },
     );

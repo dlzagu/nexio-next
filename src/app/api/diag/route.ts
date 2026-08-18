@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getDashboard } from "@/lib/data/dashboard";
 import { getMeta } from "@/lib/data/meta";
 import { getTicket, listTickets } from "@/lib/data/tickets";
-import { dbHealth } from "@/lib/db";
+import { dbHealth, devWritesAllowed } from "@/lib/db";
 import { currentUser } from "@/lib/session";
 import type { TicketFilters } from "@/lib/types";
 
@@ -24,6 +24,14 @@ export async function GET() {
   };
 
   await step("db", async () => await dbHealth());
+
+  // 쓰기가 되는 상태인가 — 화면이 202 를 돌려줄 때 "왜"를 여기서 확인한다
+  out.writes = devWritesAllowed()
+    ? { ok: true, note: "저장·액션·댓글·첨부가 실제로 기록된다" }
+    : {
+        ok: false,
+        note: "ALLOW_DEV_WRITES=false 로 잠겨 있다 (.env.local 또는 배포 환경변수를 확인)",
+      };
 
   const user = await currentUser();
   out.user = user

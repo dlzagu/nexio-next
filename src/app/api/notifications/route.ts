@@ -27,7 +27,7 @@ export async function POST(req: Request) {
       {
         code: "WRITE_DISABLED",
         message:
-          "읽음 상태는 DB 에 기록됩니다. 환경변수 ALLOW_DEV_WRITES=true 로 켜야 저장됩니다.",
+          "데모 DB 쓰기가 잠겨 있어 읽음 상태를 저장하지 못했습니다 (ALLOW_DEV_WRITES=false).",
       },
       { status: 202 },
     );

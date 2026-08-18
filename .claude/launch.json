@@ -8,11 +8,11 @@
       "port": 3000
     },
     {
-      "name": "nexio-next-write",
+      "name": "nexio-next-readonly",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000,
-      "env": { "ALLOW_DEV_WRITES": "true" }
+      "env": { "ALLOW_DEV_WRITES": "false" }
     }
   ]
 }

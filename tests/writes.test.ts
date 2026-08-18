@@ -27,7 +27,7 @@ import {
   getTicket,
   listTickets,
 } from "@/lib/data/tickets";
-import { select, write, WriteDisabledError } from "@/lib/db";
+import { devWritesAllowed, select, write, WriteDisabledError } from "@/lib/db";
 
 const filters = (over: Partial<TicketFilters> = {}): TicketFilters => ({
   view: "all",
@@ -437,5 +437,22 @@ describe("신청 저장", () => {
     expect(seed?.content).toBe(form.content);
     expect(seed?.priority).toBe("2");
     expect(seed?.moduleCode).toBe("7");
+  });
+});
+
+describe("쓰기 기본값", () => {
+  it("환경변수가 없으면 **허용**이다 (false 일 때만 잠근다)", () => {
+    const prev = process.env.ALLOW_DEV_WRITES;
+    try {
+      delete process.env.ALLOW_DEV_WRITES;
+      expect(devWritesAllowed()).toBe(true);
+      process.env.ALLOW_DEV_WRITES = "false";
+      expect(devWritesAllowed()).toBe(false);
+      // 오타·아무 값이나 들어와도 잠기지 않는다 — 잠금은 명시적일 때만
+      process.env.ALLOW_DEV_WRITES = "yes";
+      expect(devWritesAllowed()).toBe(true);
+    } finally {
+      process.env.ALLOW_DEV_WRITES = prev;
+    }
   });
 });

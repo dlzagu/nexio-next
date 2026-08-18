@@ -86,9 +86,19 @@ export async function selectOne<T = Record<string, unknown>>(
   return rows[0] ?? null;
 }
 
-/** 데모 DB 쓰기 허용 플래그. 기본 false — 신청 저장이 실제 INSERT 하지 않는다 */
+/**
+ * 데모 DB 쓰기 허용 플래그. **기본 허용**이고, `ALLOW_DEV_WRITES=false` 일 때만 잠근다.
+ *
+ * 원래는 반대(기본 차단)였다. 그건 회사 개발 DB 를 직접 보던 시절(ADR-0002)의 안전장치인데,
+ * ADR-0004 로 자체 SQLite + 전부 가상 시드가 되면서 지킬 대상이 사라졌다 —
+ * 남은 건 "저장을 눌러도 아무 일도 일어나지 않는 데모"뿐이었다.
+ *
+ * ⚠️ 서버리스(:memory:)에서는 저장이 **그 인스턴스 수명까지만** 산다. 콜드스타트가 나면
+ *    시드가 다시 깔린다 — 데모의 성질이지 버그가 아니다(ADR-0004).
+ *    잠그려면 `ALLOW_DEV_WRITES=false`. 관문(write) 안쪽에서 막으므로 라우트가 잊어도 안 뚫린다.
+ */
 export function devWritesAllowed(): boolean {
-  return process.env.ALLOW_DEV_WRITES === "true";
+  return process.env.ALLOW_DEV_WRITES !== "false";
 }
 
 export class WriteDisabledError extends Error {
