@@ -281,7 +281,9 @@ export async function applyAction(opts: {
       insertComment({
         echoNum: ticket.echoNum,
         author: user,
-        body: triaged.length ? `${rule.log} (${triaged.join(" · ")})` : rule.log,
+        body: triaged.length
+          ? `${rule.log} (${triaged.join(" · ")})`
+          : rule.log,
         adminOnly: false,
         isLog: true,
         progress: rule.to ?? ticket.progress,

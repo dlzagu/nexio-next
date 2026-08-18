@@ -142,7 +142,10 @@ export async function getMeta(user: User): Promise<MetaData> {
  */
 export async function listSystems(custCode: string): Promise<Option[]> {
   if (!custCode) return [];
-  const rows = await select<{ OPER_SYS_ID: string; SYSTEM_NAME: string | null }>(
+  const rows = await select<{
+    OPER_SYS_ID: string;
+    SYSTEM_NAME: string | null;
+  }>(
     `SELECT os.OPER_SYS_ID, os.SYSTEM_NAME
        FROM COMPANY_OPER_SYSTEM os
       WHERE os.COMPANY_CODE = @cc
