@@ -621,7 +621,7 @@
   ],
   "session_continuation": {
     "next_step": "P6.s5",
-    "note": "✅ 쓰기 경로 완료(P6.s4 — ADR-0006) + 원본 메뉴 3종 이식 완료(P8 — ADR-0007: 업무 현황 보드 /board · 공지사항 /notices · 상단 알림센터). 화면 3 → 6 + 알림, 새 의존성 0개, 새 테이블 0개(공지 본문 컬럼 1개만). 남은 것: ① P6.s5 Tiptap 편집기 ② P1.s7 ③ 배포 반영(라이브에 아직 안 올라감). ⚠️ 쓰기는 여전히 기본 차단 — 로컬에서 켜려면 .env.local 에 ALLOW_DEV_WRITES=true (또는 .claude/launch.json 의 'nexio-next-write' 구성으로 실행). ⚠️ 시드 스키마를 바꾸면 SCHEMA_VERSION 을 올리고 개발 서버를 재시작해야 한다(커넥션이 전역 캐시된다). ⚠️ 의존성 변경 후엔 npm run lock:fix. 검증: npm run verify(106개) · npm run build · /api/diag.",
+    "note": "⚠️ **라이브 배포가 막혀 있다** — main(eab8769) push·CI green 이지만 Vercel 이 'Deployment was blocked' 로 실패. 내 변경 때문이 아니라 2026-08-14 커밋 31f048b 부터 같은 상태이고, 현재 프로덕션은 그 이전 성공분(28951d5, 08-14 07:51)이다. 즉 라이브 사이트에는 쓰기 경로·이식 3종이 아직 없다(/board·/notices 404). 해제는 Vercel 대시보드에서 사용자가 확인해야 한다(사용량/요금 한도 또는 Deployment Protection) → 해제 후 Redeploy 하면 반영된다. ✅ 쓰기 경로 완료(P6.s4 — ADR-0006) + 원본 메뉴 3종 이식 완료(P8 — ADR-0007: 업무 현황 보드 /board · 공지사항 /notices · 상단 알림센터). 화면 3 → 6 + 알림, 새 의존성 0개, 새 테이블 0개(공지 본문 컬럼 1개만). 남은 것: ① P6.s5 Tiptap 편집기 ② P1.s7 ③ 배포 반영(라이브에 아직 안 올라감). ⚠️ 쓰기는 여전히 기본 차단 — 로컬에서 켜려면 .env.local 에 ALLOW_DEV_WRITES=true (또는 .claude/launch.json 의 'nexio-next-write' 구성으로 실행). ⚠️ 시드 스키마를 바꾸면 SCHEMA_VERSION 을 올리고 개발 서버를 재시작해야 한다(커넥션이 전역 캐시된다). ⚠️ 의존성 변경 후엔 npm run lock:fix. 검증: npm run verify(106개) · npm run build · /api/diag.",
     "compact_after_each_step": true
   }
 }
