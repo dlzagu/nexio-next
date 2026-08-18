@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
-import { currentUser, loadUser, PERSONAS, USER_COOKIE } from "@/lib/session";
+import {
+  currentUser,
+  listPersonas,
+  loadUser,
+  USER_COOKIE,
+} from "@/lib/session";
 
 export async function GET() {
   const user = await currentUser();
   if (!user) {
     return NextResponse.json({ code: "NO_SESSION" }, { status: 401 });
   }
-  return NextResponse.json({ user, personas: PERSONAS });
+  return NextResponse.json({ user, personas: await listPersonas() });
 }
 
 /** 데모 역할 전환 — 시드 데이터의 가상 인물로 전환한다 (ADR-0004) */

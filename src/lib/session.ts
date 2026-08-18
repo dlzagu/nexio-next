@@ -113,3 +113,35 @@ export async function loadCustomerConfig(
     defaultPrivate: isY(r.DEF_PRIVATE_YN),
   };
 }
+
+/** 역할 전환 목록의 한 줄. `available=false` 면 **DB 에 그 계정이 없다** */
+export interface Persona {
+  id: string;
+  hint: string;
+  available: boolean;
+}
+
+/**
+ * 역할 전환 목록. 힌트는 코드에, **사람은 DB 에** 있다 — 둘은 따로 배포된다
+ * (코드는 git push, 데모 데이터는 시드). 그래서 코드가 제시하는 사람이 DB 에 없을 수 있다:
+ * 로컬 파일 DB 는 SCHEMA_VERSION 이 바뀌면 통째로 다시 만들어지지만,
+ * **공유 DB 는 아무 일도 일어나지 않는다** (실측: 새로 추가한 페르소나가 라이브에서 404).
+ *
+ * 없는 사람을 목록에서 지우지는 않는다 — 지우면 "왜 없지"가 남는다.
+ * 비활성으로 두고 이유를 붙인다 (막힌 액션·취소 힌트와 같은 규칙).
+ */
+export async function listPersonas(): Promise<Persona[]> {
+  const params = PERSONAS.map((p, i) => ({ name: `p${i}`, value: p.id }));
+  const rows = await select<{ MBER_ID: string }>(
+    `SELECT MBER_ID FROM MEMBER_MST
+      WHERE MBER_ID IN (${params.map((p) => `@${p.name}`).join(",")})`,
+    params,
+  );
+  const present = new Set(rows.map((r) => r.MBER_ID));
+  return PERSONAS.map((p) => ({ ...p, available: present.has(p.id) }));
+}
+
+/** 목록에 있는데 DB 에 없는 계정 — 코드와 데모 데이터가 어긋난 지점 */
+export async function missingPersonaIds(): Promise<string[]> {
+  return (await listPersonas()).filter((p) => !p.available).map((p) => p.id);
+}

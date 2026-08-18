@@ -4,8 +4,10 @@ import { useRouter } from "next/navigation";
 import { Monitor, Moon, Rows2, Rows3, Rows4, Sun, UserCog } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import { useCallback, useState, useTransition } from "react";
+import { Notice } from "@/components/ui/EmptyState";
 import { cn } from "@/lib/cn";
 import { USER_ROLE_LABEL } from "@/lib/codes";
+import type { Persona } from "@/lib/session";
 import type { User } from "@/lib/types";
 import { notifyPrefChange, usePref } from "@/lib/usePref";
 import { NotificationBell } from "./NotificationBell";
@@ -30,12 +32,19 @@ function applyDensity(d: Density) {
   localStorage.setItem("nx-density", d);
 }
 
+/** 전환이 왜 안 됐는지 — 코드를 그대로 보여주지 않고 사람이 읽을 문장으로 */
+const SWITCH_ERROR: Record<string, string> = {
+  USER_NOT_FOUND:
+    "이 계정이 데모 DB 에 없습니다. 공유 DB 가 코드보다 뒤처졌습니다 (npm run db:sync:remote).",
+  BAD_REQUEST: "전환할 계정이 지정되지 않았습니다.",
+};
+
 export function Topbar({
   user,
   personas,
 }: {
   user: User;
-  personas: readonly { id: string; hint: string }[];
+  personas: Persona[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -50,6 +59,7 @@ export function Topbar({
     "relaxed",
   ]);
   const [switching, setSwitching] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
 
   // 테마·밀도는 localStorage 뿐 아니라 html 속성도 바꿔야 하므로 전용 적용 함수를 쓴다
   const setTheme = useCallback((v: Theme) => {
@@ -61,15 +71,32 @@ export function Topbar({
     notifyPrefChange();
   }, []);
 
+  /**
+   * 🔴 응답 상태를 **반드시 본다.** 예전엔 결과를 버리고 무조건 refresh 만 해서,
+   *    전환이 404 로 거절돼도 화면이 아무 말도 하지 않았다 — 눌러도 그대로인 버튼은
+   *    "선택이 안 되는" 고장으로 보인다 (실측: 라이브에서 새 페르소나가 404).
+   */
   const switchUser = async (userId: string) => {
     setSwitching(true);
-    await fetch("/api/session", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ userId }),
-    });
-    setSwitching(false);
-    startTransition(() => router.refresh());
+    setFailed(null);
+    try {
+      const res = await fetch("/api/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      if (res.status !== 200) {
+        const body = (await res.json().catch(() => ({}))) as { code?: string };
+        setFailed(
+          (body.code && SWITCH_ERROR[body.code]) ??
+            `전환하지 못했습니다 (HTTP ${res.status}).`,
+        );
+        return;
+      }
+      startTransition(() => router.refresh());
+    } finally {
+      setSwitching(false);
+    }
   };
 
   return (
@@ -156,18 +183,30 @@ export function Topbar({
               <button
                 key={p.id}
                 type="button"
+                disabled={!p.available || switching}
+                title={
+                  p.available
+                    ? undefined
+                    : "이 계정이 데모 DB 에 없습니다 — 공유 DB 가 코드보다 뒤처졌습니다"
+                }
                 onClick={() => switchUser(p.id)}
                 className={cn(
                   "text-13 hover:bg-hover flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left",
+                  "disabled:opacity-45 disabled:hover:bg-transparent",
                   p.id === user.id && "bg-selected text-accent-text",
                 )}
               >
                 <span className="ell">{p.hint}</span>
                 <span className="mono text-11 text-fg-subtle shrink-0">
-                  {p.id}
+                  {p.available ? p.id : "없음"}
                 </span>
               </button>
             ))}
+            {failed ? (
+              <div role="alert" className="mt-1.5">
+                <Notice tone="danger">{failed}</Notice>
+              </div>
+            ) : null}
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>

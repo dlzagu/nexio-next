@@ -8,7 +8,7 @@ import {
   isSharedDb,
   writeDisabledReason,
 } from "@/lib/db";
-import { currentUser } from "@/lib/session";
+import { currentUser, missingPersonaIds, PERSONAS } from "@/lib/session";
 import type { TicketFilters } from "@/lib/types";
 
 /** 데이터 레이어 자기진단. 각 조회가 실제로 도는지 한 번에 확인한다 */
@@ -48,6 +48,19 @@ export async function GET() {
         : "TURSO_AUTH_TOKEN 이 없다 — 원격이 401 로 거절한다",
     };
   }
+
+  // 코드가 제시하는 페르소나가 DB 에 **실재하는가**. 공유 DB 는 코드와 따로 배포되므로
+  // 시드가 앞서가면 역할 전환이 404 로 거절된다 — 화면에서는 "눌러도 아무 일이 없는" 고장이다.
+  // 장애로 취급한다(진단이 500 이 된다): 배포 검증은 화면이 아니라 HTTP 상태로 한다.
+  await step("personas", async () => {
+    const missing = await missingPersonaIds();
+    if (missing.length) {
+      throw new Error(
+        `데모 DB 에 없는 계정: ${missing.join(", ")} — npm run db:sync:remote 로 맞추세요`,
+      );
+    }
+    return { total: PERSONAS.length };
+  });
 
   const user = await currentUser();
   out.user = user

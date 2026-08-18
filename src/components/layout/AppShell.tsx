@@ -1,5 +1,5 @@
 import { listTickets } from "@/lib/data/tickets";
-import { currentUser, PERSONAS } from "@/lib/session";
+import { currentUser, listPersonas } from "@/lib/session";
 import type { TicketFilters, User } from "@/lib/types";
 import { InlineError } from "@/components/ui/EmptyState";
 import { Sidebar } from "./Sidebar";
@@ -79,12 +79,14 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const openCount = await openCountFor(user);
+  // 목록은 코드가 아니라 **DB 와 대조해** 만든다 — 없는 사람을 누를 수 있게 두지 않는다
+  const personas = await listPersonas();
 
   return (
     <div className="flex min-h-dvh">
       <Sidebar user={user} openCount={openCount} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar user={user} personas={PERSONAS} />
+        <Topbar user={user} personas={personas} />
         <main className="min-w-0 flex-1">{children}</main>
       </div>
     </div>
