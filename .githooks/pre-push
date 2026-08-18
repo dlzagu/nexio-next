@@ -1,0 +1,44 @@
+#!/bin/sh
+#
+# 익명화 前 이력이 원격으로 새는 것을 막는다.
+#
+# 이 저장소는 공개다. `private-history` 브랜치에는 **익명화 전 실 DB명·사명·사내 경로**가
+# 담긴 커밋이 그대로 남아 있다(원본 대조용으로 로컬에만 둔다). 지금까지 이걸 막는 것은
+# 사람의 기억뿐이었다 — 한 번의 `git push --all` 이면 되돌릴 수 없다.
+#
+# 브랜치 이름만 보지 않는다. 이름을 바꿔 밀어도 **커밋이 그 이력에 속하면** 막는다.
+#
+# 설치: npm install 이 자동으로 core.hooksPath 를 여기로 맞춘다
+#       (scripts/install-hooks.mjs). 수동으로는 `git config core.hooksPath .githooks`.
+# 우회: 정말 필요하면 `git push --no-verify` — 그때는 무엇을 미는지 알고 하는 것이다.
+
+BLOCKED="private-history"
+ZERO="0000000000000000000000000000000000000000"
+status=0
+
+while read -r local_ref local_sha _remote_ref _remote_sha; do
+  # 브랜치 삭제(push :branch)는 흘릴 내용이 없다
+  [ "$local_sha" = "$ZERO" ] && continue
+
+  blocked=0
+  case "$local_ref" in
+    *"$BLOCKED"*) blocked=1 ;;
+  esac
+
+  # 이름을 갈아도 내용으로 잡는다 — 미는 커밋이 그 이력 안에 있으면 거부
+  if [ "$blocked" -eq 0 ] &&
+    git rev-parse --verify --quiet "refs/heads/$BLOCKED" >/dev/null; then
+    if git merge-base --is-ancestor "$local_sha" "refs/heads/$BLOCKED" 2>/dev/null; then
+      blocked=1
+    fi
+  fi
+
+  if [ "$blocked" -eq 1 ]; then
+    echo "⛔ push 차단: $local_ref"
+    echo "   '$BLOCKED' 는 익명화 전 이력(실 DB명·사명·사내 경로)이라 원격에 올리지 않는다."
+    echo "   공개 저장소이므로 한 번 올라가면 되돌릴 수 없다."
+    status=1
+  fi
+done
+
+exit $status

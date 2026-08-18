@@ -21,6 +21,7 @@ npm run verify      # lint → typecheck → test. 이거 하나로 완료 판�
 npm run dev         # 개발 서버 (포트 3000) — 첫 실행 때 SQLite 시드 자동 생성
 npm run db:reset    # 데모 DB 삭제 → 다음 실행 때 재시드
 npm run db:sync:remote -- --dry   # 공유 DB 의 마스터가 시드보다 뒤처졌는지 본다
+npm run smoke       # 빌드 산출물을 실제로 띄워 주요 경로 확인 (CI 마지막 단계)
 npm run test:watch  # 테스트 watch
 npm run format      # prettier (코드만 — 문서·docs/ 는 대상 아님)
 npm run build       # 프로덕션 빌드 (CI 가 push/PR 마다 실행)

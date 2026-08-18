@@ -14,7 +14,7 @@
 |---|---|
 | **규모** | 화면 8개 + 알림센터 · TypeScript 12,100줄(+테스트 2,200줄) · 설계 기록(ADR) 10건 |
 | **스택** | Next.js 16(App Router) · React 19 · TypeScript strict · Tailwind 4 + 자체 토큰 · Radix UI · SQLite/libSQL · Vitest · GitHub Actions · Vercel |
-| **검증** | 테스트 142개 · lint → typecheck → test → build 자동 실행 |
+| **검증** | 테스트 162개 · lint → typecheck → test → build 자동 실행 |
 
 ![대시보드](docs/screenshots/01-dashboard.png)
 
@@ -150,11 +150,17 @@ SQLite 호환 저장소
 
 ## 검증 · 배포
 
-- **CI** (GitHub Actions): push/PR 마다 `verify`(lint·typecheck·테스트 142개) → `format:check` → `build`
+- **CI** (GitHub Actions): push/PR 마다 `verify`(lint·typecheck·테스트 162개) → `format:check` →
+  `build` → **런타임 스모크**(앱을 실제로 띄워 주요 경로 11개와 `/api/diag` 확인)
 - **CD** (Vercel Git 연동): `main` push → 프로덕션 배포, PR → 프리뷰 URL 자동 발급
 - 테스트는 개수보다 **무엇을 고정하는가**가 기준입니다 — 권한 fail-closed, 데이터 위생(디코드·
   새니타이즈 순서), 쓰기 트랜잭션 원자성, 시드 불변식
+- **라우트 핸들러 테스트 20개** — 버튼을 숨기는 것은 표시일 뿐이고 요청을 막는 것은 라우트입니다.
+  화면을 거치지 않고 직접 호출해도 거부되는지(타사 티켓 404·취소는 신청자 본인만·소속 교차 조회)를
+  고정합니다
 - 배포 상태는 `/api/diag` 로 확인합니다 (DB 모드·쓰기 가능 여부·각 조회의 소요 시간)
+- 익명화 전 이력이 원격으로 새지 않도록 `pre-push` 훅이 막습니다 — 브랜치 이름뿐 아니라
+  **커밋 소속**으로도 판정해 이름을 바꿔 밀어도 걸립니다 (`.githooks/`, `npm install` 이 연결)
 - **코드와 데모 데이터의 배포 경로가 다릅니다** — 코드는 push 로 배포되지만 공유 DB 는
   따라오지 않습니다. 어긋나면 진단이 500 으로 신고하고, `db:sync:remote` 가 마스터만
   얹어 맞춥니다(라이브에서 만들어진 티켓·댓글·첨부는 그대로 둡니다)

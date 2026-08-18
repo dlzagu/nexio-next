@@ -29,3 +29,8 @@ jobs:
 
       - name: 프로덕션 빌드
         run: npm run build
+
+      # 빌드까지는 초록인데 화면만 깨지는 사고가 세 번 났다 —
+      # 한 번 띄워 200 을 받아 보는 것이 유일한 방벽이다 (scripts/smoke.mjs)
+      - name: 런타임 스모크 (앱을 실제로 띄운다)
+        run: npm run smoke

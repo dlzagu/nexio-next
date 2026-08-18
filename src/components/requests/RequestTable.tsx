@@ -20,6 +20,13 @@ import type { TicketRow } from "@/lib/types";
 const col = createColumnHelper<TicketRow>();
 
 /**
+ * 자물쇠 한 개로는 **누구에게** 비공개인지 알 수 없다 — 목록에는 신청자 칸이 없어서
+ * 담당자 이름이 신청자로 읽히고, "남의 비공개 건이 보인다"는 오해가 생긴다.
+ * 실제 규칙(tickets.ts scopeClause)을 그대로 문장으로 적는다.
+ */
+const PRIVATE_HINT = "비공개 — 신청한 사람과 그 회사 승인권자만 볼 수 있습니다";
+
+/**
  * 컬럼 7개로 제한한다. 나머지 90여 필드는 전부 상세 Sheet 로 —
  * 원본은 목록 화면에 상세 편집 컨트롤 56개가 얹혀 있었다.
  *
@@ -59,11 +66,14 @@ export function RequestTable({
         cell: (c) => (
           <span className="flex min-w-0 items-center gap-1.5">
             {!c.row.original.isPublic ? (
-              <Lock
-                size={11}
-                aria-label="비공개"
-                className="text-fg-subtle shrink-0"
-              />
+              // 아이콘 자체는 title 을 받지 않는다 — 감싼 요소에 붙인다
+              <span
+                title={PRIVATE_HINT}
+                aria-label={PRIVATE_HINT}
+                className="flex shrink-0"
+              >
+                <Lock size={11} aria-hidden className="text-fg-subtle" />
+              </span>
             ) : null}
             <span className="ell font-medium">{c.getValue()}</span>
           </span>

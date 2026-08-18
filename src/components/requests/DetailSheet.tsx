@@ -340,7 +340,12 @@ export function DetailSheet({
             {!t.isPublic ? (
               <>
                 <Dot />
-                <span className="badge badge-neutral">비공개</span>
+                <span
+                  className="badge badge-neutral"
+                  title="비공개 — 신청한 사람과 그 회사 승인권자만 볼 수 있습니다"
+                >
+                  비공개
+                </span>
               </>
             ) : null}
           </div>

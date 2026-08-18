@@ -142,7 +142,14 @@ export async function POST(
     if (t.scheDate.trim()) {
       const v = t.scheDate.trim();
       const limit = new Date(new Date().getFullYear() + 2, 11, 31);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || new Date(v) > limit) {
+      const d = new Date(v);
+      // ⚠️ 모양만 봐서는 안 된다 — '2026-13-40' 은 정규식을 통과하고, 뒤따르는 범위 비교는
+      //    Invalid Date 라 **거짓**이 되어 그대로 저장된다 (NaN 비교는 언제나 거짓이다).
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(v) ||
+        Number.isNaN(d.getTime()) ||
+        d > limit
+      ) {
         return NextResponse.json(
           {
             code: "INVALID_SCHEDATE",
