@@ -11,6 +11,37 @@
 > **모든 데이터는 가상입니다.** 고객사·인물·티켓 내용 전부 시드 생성기가 만든
 > 창작 데이터이며, 실제 회사·고객사 데이터는 포함되어 있지 않습니다.
 
+![대시보드](docs/screenshots/01-dashboard.png)
+
+## 화면
+
+원본에서 **한 화면에 눌려 있던 것**을 목적별로 나눈 결과입니다. 데이터는 전부 가상입니다.
+
+<table>
+<tr>
+<td width="50%"><a href="docs/screenshots/02-requests-list.png"><img src="docs/screenshots/02-requests-list.png" alt="요청 조회"></a></td>
+<td width="50%"><a href="docs/screenshots/03-request-detail.png"><img src="docs/screenshots/03-request-detail.png" alt="요청 상세"></a></td>
+</tr>
+<tr>
+<td><b>요청 조회</b> — 원본 6,611줄·버튼 25종의 화면. 필터 13개 중 상시 4개만 펴 두고, 정렬 한계·절단은 숨기지 않고 화면에 적는다</td>
+<td><b>요청 상세</b> — 102필드를 5탭으로 수납. 상태·권한으로 계산된 액션만 최대 3개 노출하고, 막힌 이유는 문장으로 설명한다</td>
+</tr>
+<tr>
+<td width="50%"><a href="docs/screenshots/04-board.png"><img src="docs/screenshots/04-board.png" alt="업무 현황 보드"></a></td>
+<td width="50%"><a href="docs/screenshots/05-request-new.png"><img src="docs/screenshots/05-request-new.png" alt="서비스 신청"></a></td>
+</tr>
+<tr>
+<td><b>업무 현황</b> — 같은 데이터의 다른 시점. 카드를 끌면 조회 화면과 <b>같은 액션 라우트</b>를 호출한다. 드래그 못 하는 환경을 위해 '다음 단계' 버튼을 함께 둔다</td>
+<td><b>서비스 신청</b> — 원본의 순차 alert 8단계를 인라인 검증으로. 첨부는 고르는 즉시 형식·용량을 판정한다</td>
+</tr>
+<tr>
+<td colspan="2"><a href="docs/screenshots/06-dashboard-dark.png"><img src="docs/screenshots/06-dashboard-dark.png" alt="다크 모드"></a></td>
+</tr>
+<tr>
+<td colspan="2"><b>다크 모드 · 밀도 3단</b> — 토큰 168개로 직접 만든 디자인 시스템(<code>/styleguide</code>). 색만으로 상태를 구분하지 않는다 — 상태군마다 글리프가 다르다</td>
+</tr>
+</table>
+
 ## 실행
 
 ```bash
@@ -67,11 +98,11 @@ SQLite (better-sqlite3)
 
 Next.js 16 (App Router) · React 19 · TypeScript strict · Tailwind 4 + 자체 토큰 ·
 Radix UI · TanStack Table · react-hook-form + zod · recharts · xss(새니타이즈) ·
-better-sqlite3 · vitest (122 tests) · GitHub Actions CI
+better-sqlite3 · vitest (127 tests) · GitHub Actions CI
 
 ## 배포 · CI/CD
 
-- **CI** (GitHub Actions): push/PR 마다 `verify`(lint·typecheck·테스트 122개) → `format:check` → `build`
+- **CI** (GitHub Actions): push/PR 마다 `verify`(lint·typecheck·테스트 127개) → `format:check` → `build`
 - **CD** (Vercel Git 연동): `main` push → 프로덕션 배포, PR → 프리뷰 URL 자동 발급
 - **환경변수 설정이 필요 없다** — 서버리스에서는 콜드스타트 때 메모리 DB 에 시드를
   즉석 생성한다 (`src/lib/db.ts`). 배포 상태는 `/api/diag` 로 확인한다
