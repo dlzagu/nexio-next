@@ -1,19 +1,33 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { createClient, type Client } from "@libsql/client/web";
 import { ensureSeed } from "./dev-seed/generate";
 
 /**
  * 데모 DB (SQLite + 가상 시드 데이터).
  *
  * 사이드 프로젝트 전환(ADR-0004) — 회사 개발 DB 직접 조회(ADR-0002)를 대체한다.
- * 외부 DB 서버·계정·환경변수 없이 클론 직후 바로 돈다:
+ * **로컬은 환경변수 없이 클론 직후 바로 돈다.**
  *  - 로컬: `.data/nexio.db` 파일. 없으면 첫 접속 때 스키마 생성 + 시드 (npm run db:reset 으로 재생성)
- *  - 서버리스(Vercel): 파일시스템이 read-only 라 `:memory:` — 콜드스타트마다 시드를 즉석 생성
+ *  - 서버리스(Vercel) 기본: 파일시스템이 read-only 라 `:memory:` — 콜드스타트마다 시드를 즉석 생성.
+ *    인스턴스마다 DB 가 따로라 **읽기 전용**이다.
+ *  - 서버리스 + 공유 DB(`TURSO_DATABASE_URL`): 모든 인스턴스가 같은 libSQL 을 본다 → 쓰기가 열린다.
+ *    SQLite 호환이라 쿼리는 한 줄도 바뀌지 않는다 (ADR-0009).
  *
  * 🔒 읽기·쓰기 관문이 분리돼 있다. select() 는 SELECT/WITH 이외를 기계적으로 거부하고,
  *    쓰기는 write() 라는 **별도의 좁은 문**으로만 들어간다 (select 를 넓히지 않는다).
  */
+
+/** 공유 DB 좌표. 있으면 그쪽이 정본이다 (로컬 파일·메모리보다 우선) */
+function remoteUrl(): string | null {
+  return process.env.TURSO_DATABASE_URL?.trim() || null;
+}
+
+/** 모든 인스턴스가 같은 데이터를 보는가 — 쓰기를 열 수 있는지의 근거 */
+export function isSharedDb(): boolean {
+  return !!remoteUrl();
+}
 
 function dbPath(): string {
   if (process.env.SQLITE_PATH) return process.env.SQLITE_PATH;
@@ -23,7 +37,37 @@ function dbPath(): string {
 }
 
 // dev 서버 HMR 마다 커넥션이 새로 생기지 않게 전역에 캐시한다
-const g = globalThis as unknown as { __nxDb?: Database.Database };
+const g = globalThis as unknown as {
+  __nxDb?: Database.Database;
+  __nxRemote?: Client;
+};
+
+/**
+ * 공유 DB 클라이언트. `/web` 진입점은 fetch 기반 순수 JS 라 서버리스 번들에 그대로 담긴다
+ * (네이티브 바인딩을 끌고 오면 jsdom 때와 같은 사고가 난다 — ADR-0005).
+ * 시드는 여기서 만들지 않는다: 로컬에서 만든 `.data/nexio.db` 를 통째로 올린다(ADR-0009).
+ */
+function remote(): Client {
+  if (!g.__nxRemote) {
+    g.__nxRemote = createClient({
+      url: remoteUrl()!,
+      authToken: process.env.TURSO_AUTH_TOKEN,
+    });
+  }
+  return g.__nxRemote;
+}
+
+/** libSQL 행 → 평범한 객체. 데이터 계층이 컬럼명으로 읽는다 */
+function toPlainRows<T>(rs: { columns: string[]; rows: unknown[][] }): T[] {
+  return rs.rows.map((row) => {
+    const o: Record<string, unknown> = {};
+    rs.columns.forEach((c, i) => {
+      const v = row[i];
+      o[c] = v instanceof ArrayBuffer ? Buffer.from(v) : v;
+    });
+    return o as T;
+  });
+}
 
 function db(): Database.Database {
   if (g.__nxDb) return g.__nxDb;
@@ -75,7 +119,14 @@ export async function select<T = Record<string, unknown>>(
       "select() 는 SELECT/WITH 만 실행합니다. 쓰기 구문이 감지됐습니다.",
     );
   }
-  return db().prepare(stripped).all(bindable(stripped, params)) as T[];
+  const args = bindable(stripped, params);
+  if (isSharedDb()) {
+    const rs = await remote().execute({ sql: stripped, args });
+    return toPlainRows<T>(
+      rs as unknown as { columns: string[]; rows: unknown[][] },
+    );
+  }
+  return db().prepare(stripped).all(args) as T[];
 }
 
 export async function selectOne<T = Record<string, unknown>>(
@@ -104,12 +155,13 @@ export async function selectOne<T = Record<string, unknown>>(
 export function devWritesAllowed(): boolean {
   const flag = process.env.ALLOW_DEV_WRITES;
   if (flag) return flag !== "false";
-  return !process.env.VERCEL;
+  // 서버리스라도 **모든 인스턴스가 같은 DB 를 보면** 잠글 이유가 없다
+  return !process.env.VERCEL || isSharedDb();
 }
 
 /** 왜 잠겼는지. 화면이 202 와 함께 보여 준다 — "켜세요"가 답이 아닌 경우가 있다 */
 export function writeDisabledReason(): string {
-  if (process.env.VERCEL && !process.env.ALLOW_DEV_WRITES) {
+  if (process.env.VERCEL && !isSharedDb() && !process.env.ALLOW_DEV_WRITES) {
     return "라이브 데모는 요청마다 다른 인스턴스가 응답할 수 있고 데모 DB 가 인스턴스 메모리에 있어, 저장해도 다음 조회에서 사라집니다. 그래서 저장을 잠가 두었습니다 — 로컬에서 실행하면 실제로 저장됩니다.";
   }
   return "데모 DB 쓰기가 잠겨 있습니다 (ALLOW_DEV_WRITES=false).";
@@ -143,20 +195,27 @@ export async function write(statements: WriteStatement[]): Promise<number[]> {
   if (!devWritesAllowed()) throw new WriteDisabledError();
   if (statements.length === 0) return [];
 
-  const database = db();
-  const prepared = statements.map(({ sql, params = [] }) => {
+  const checked = statements.map(({ sql, params = [] }) => {
     const stripped = stripComments(sql);
     if (!WRITE_ONLY.test(stripped)) {
       throw new Error(
         "write() 는 INSERT/UPDATE 만 실행합니다. 허용되지 않는 구문입니다.",
       );
     }
-    return {
-      stmt: database.prepare(stripped),
-      bound: bindable(stripped, params),
-    };
+    return { sql: stripped, args: bindable(stripped, params) };
   });
 
+  if (isSharedDb()) {
+    // batch(..., "write") 가 곧 트랜잭션이다 — 하나라도 실패하면 전부 되돌아간다
+    const results = await remote().batch(checked, "write");
+    return results.map((r) => Number(r.rowsAffected));
+  }
+
+  const database = db();
+  const prepared = checked.map(({ sql, args }) => ({
+    stmt: database.prepare(sql),
+    bound: args,
+  }));
   const tx = database.transaction(() =>
     prepared.map(({ stmt, bound }) => stmt.run(bound).changes),
   );
@@ -175,7 +234,11 @@ export async function dbHealth(): Promise<{
     );
     return {
       ok: true,
-      mode: dbPath() === ":memory:" ? "memory" : "file",
+      mode: isSharedDb()
+        ? "shared(libSQL)"
+        : dbPath() === ":memory:"
+          ? "memory"
+          : "file",
       tickets: Number(rows[0]?.n ?? 0),
     };
   } catch (e) {

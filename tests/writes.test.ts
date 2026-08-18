@@ -29,6 +29,7 @@ import {
 } from "@/lib/data/tickets";
 import {
   devWritesAllowed,
+  isSharedDb,
   select,
   write,
   writeDisabledReason,
@@ -486,5 +487,35 @@ describe("쓰기 기본값 — 저장소가 정한다", () => {
     withEnv({ ALLOW_DEV_WRITES: "false", VERCEL: undefined }, () => {
       expect(devWritesAllowed()).toBe(false);
     });
+  });
+});
+
+describe("공유 DB — 붙으면 배포에서도 열린다", () => {
+  it("TURSO_DATABASE_URL 이 있으면 서버리스에서도 쓰기가 허용된다", () => {
+    const prev = { ...process.env };
+    try {
+      delete process.env.ALLOW_DEV_WRITES;
+      process.env.VERCEL = "1";
+      // 공유 DB 없이는 잠긴다 (인스턴스마다 메모리 DB 라 저장이 어긋난다)
+      delete process.env.TURSO_DATABASE_URL;
+      expect(isSharedDb()).toBe(false);
+      expect(devWritesAllowed()).toBe(false);
+
+      // 모든 인스턴스가 같은 DB 를 보면 잠글 이유가 없다
+      process.env.TURSO_DATABASE_URL = "libsql://demo.example.turso.io";
+      expect(isSharedDb()).toBe(true);
+      expect(devWritesAllowed()).toBe(true);
+
+      // 그래도 명시적 잠금은 이긴다
+      process.env.ALLOW_DEV_WRITES = "false";
+      expect(devWritesAllowed()).toBe(false);
+    } finally {
+      process.env.ALLOW_DEV_WRITES = prev.ALLOW_DEV_WRITES;
+      if (prev.ALLOW_DEV_WRITES === undefined)
+        delete process.env.ALLOW_DEV_WRITES;
+      if (prev.VERCEL === undefined) delete process.env.VERCEL;
+      if (prev.TURSO_DATABASE_URL === undefined)
+        delete process.env.TURSO_DATABASE_URL;
+    }
   });
 });
