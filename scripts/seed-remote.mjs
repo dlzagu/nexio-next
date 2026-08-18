@@ -6,7 +6,14 @@
  * 이미 만들어진 파일을 복사하면 **로컬과 라이브가 같은 데이터**임이 자명해진다.
  *
  *   npm run dev              # 한 번 띄워 .data/nexio.db 를 만든다 (없으면)
- *   TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... npm run db:seed:remote
+ *   # 저장소 루트에 .env.turso 파일을 만들고 두 줄을 넣는다 (gitignore 대상)
+ *   #   TURSO_DATABASE_URL=libsql://<db>-<org>.turso.io
+ *   #   TURSO_AUTH_TOKEN=<토큰>
+ *   npm run db:seed:remote
+ *
+ * ⚠️ 왜 `.env.local` 이 아니라 `.env.turso` 인가: `.env.local` 은 Next.js 가 자동으로
+ *    읽어서, 거기 좌표를 넣으면 **로컬 개발까지 원격 DB 를 보게 된다.**
+ *    파일을 갈라 두면 로컬은 파일 DB, 시드 스크립트만 원격을 본다.
  *
  * 스키마도 로컬 DB 에서 읽어 온다(sqlite_master) — 스키마 정의를 두 벌 관리하지 않는다.
  * ⚠️ 원격에 이미 있는 같은 이름의 테이블은 **지우고 다시 만든다**. 데모 DB 라 잃을 게 없다.

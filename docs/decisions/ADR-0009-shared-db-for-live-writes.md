@@ -75,7 +75,17 @@ ADR-0004 의 약속은 **로컬에 한해** 유지된다.
 ## 켜는 법 (3단계)
 
 1. [turso.tech](https://turso.tech) 무료 DB 생성 → URL·토큰 확보
-2. 로컬에서 `TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... npm run db:seed:remote`
+2. 저장소 루트에 `.env.turso` 를 만들고 두 줄을 넣은 뒤 `npm run db:seed:remote`
+
+   ```
+   TURSO_DATABASE_URL=libsql://<db>-<org>.turso.io
+   TURSO_AUTH_TOKEN=<토큰>
+   ```
+
+   ⚠️ `.env.local` 이 아니라 `.env.turso` 다 — `.env.local` 은 Next.js 가 자동으로 읽어서
+   **로컬 개발까지 원격 DB 를 보게 된다.** 파일을 갈라 두면 로컬은 파일 DB 그대로다.
+   (둘 다 `.gitignore` 의 `.env*` 에 걸려 커밋되지 않는다)
+
 3. Vercel 프로젝트 환경변수에 같은 값 2개 추가 → 재배포
 
 확인: `/api/diag` 의 `db.mode` 가 `shared(libSQL)`, `writes.allowed` 가 `true`.
