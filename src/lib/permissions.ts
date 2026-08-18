@@ -132,6 +132,14 @@ const ACTION_ORDER: ActionSpec[] = [
   { action: "reject", label: "반려", variant: "danger-soft" },
 ];
 
+/** 액션 라벨 정본 — 화면 버튼과 처리 결과 안내가 같은 말을 쓰게 한다 */
+export function actionLabel(action: TicketAction): string {
+  return (
+    ACTION_ORDER.find((s) => s.action === action)?.label ??
+    (action === "comment" ? "댓글" : action)
+  );
+}
+
 export function availableActions(
   ticket: TicketRow | null,
   user: User | null,

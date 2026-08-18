@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ExternalLink, Info } from "lucide-react";
 import { StatusBadge } from "@/components/ui/Badge";
@@ -25,6 +27,7 @@ interface Payload {
   can: {
     editSolution: boolean;
     comment: boolean;
+    postInternalComment: boolean;
     editSolutionReason: string | null;
   };
 }
@@ -49,6 +52,7 @@ export function DetailSheet({
    * 이렇게 하면 티켓이 바뀔 때 effect 안에서 setState(null) 로 초기화할 필요가 없다
    * (동기 setState-in-effect 는 연쇄 렌더를 만든다).
    */
+  const router = useRouter();
   const [loaded, setLoaded] = useState<{
     echoNum: string;
     data?: Payload;
@@ -171,7 +175,23 @@ export function DetailSheet({
       echoNum: target,
       msg: body.message ?? body.code ?? `HTTP ${res.status}`,
     });
-    return res.ok || res.status === 202;
+
+    // 🔴 202(WRITE_DISABLED)는 **저장되지 않았다**는 뜻이다. res.ok 는 202 를 포함하므로
+    //    그걸로 성공을 판정하면 쓰기가 꺼진 기본 설정에서 사용자가 쓰던 초안을 지운다.
+    const saved = res.status === 200;
+    if (saved) {
+      // 초안을 버리고 저장된 값을 다시 읽는다. 안 그러면 방금 저장한 내용이
+      // '변경 있음' 으로 남아 두 번 저장하게 된다.
+      setDraftState(null);
+      setCommentState(null);
+      const fresh = await fetch(`/api/tickets/${encodeURIComponent(target)}`);
+      if (fresh.ok) {
+        setLoaded({ echoNum: target, data: (await fresh.json()) as Payload });
+      }
+      // 목록·카운트·대시보드는 서버 컴포넌트라 별도로 갱신해야 한다
+      router.refresh();
+    }
+    return saved || res.status === 202;
   };
 
   const saveSolution = async () => {
@@ -242,16 +262,27 @@ export function DetailSheet({
               <StatusBadge progress={t.progress} />
               <div className="flex flex-wrap justify-end gap-2">
                 {data?.actions.length ? (
-                  data.actions.map((a) => (
-                    <button
-                      key={a.action}
-                      type="button"
-                      className={cn("btn", VARIANT[a.variant])}
-                      onClick={() => runAction(a.action)}
-                    >
-                      {a.label}
-                    </button>
-                  ))
+                  data.actions.map((a) =>
+                    // 재신청은 상태 전이가 아니라 **새 신청**이다 → 폼으로 보낸다
+                    a.action === "reapply" ? (
+                      <Link
+                        key={a.action}
+                        href={`/requests/new?from=${encodeURIComponent(t.echoNum)}`}
+                        className={cn("btn", VARIANT[a.variant])}
+                      >
+                        {a.label}
+                      </Link>
+                    ) : (
+                      <button
+                        key={a.action}
+                        type="button"
+                        className={cn("btn", VARIANT[a.variant])}
+                        onClick={() => runAction(a.action)}
+                      >
+                        {a.label}
+                      </button>
+                    ),
+                  )
                 ) : (
                   <span className="text-11 text-fg-subtle">
                     {isTerminal(t.progress)
@@ -425,7 +456,7 @@ export function DetailSheet({
                 ? "종료된 요청에는 댓글을 남길 수 없습니다."
                 : "이 요청에 댓글을 남길 권한이 없습니다."
             }
-            canPostInternal={data?.can.editSolution ?? false}
+            canPostInternal={data?.can.postInternalComment ?? false}
             internalOnly={comment.internalOnly}
             onInternalOnlyChange={(v) =>
               setCommentState({

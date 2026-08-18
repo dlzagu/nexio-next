@@ -31,6 +31,10 @@ export async function GET(
     can: {
       editSolution: canDo("save", ticket, user, config),
       comment: canDo("comment", ticket, user, config),
+      // 내부 전용 댓글은 운영팀만 — 읽기 가드가 INTERNAL 에게만 열려 있어서, 외부업체에게
+      // 체크박스를 주면 "쓸 수는 있는데 본인에게도 안 보이는" 댓글이 된다
+      postInternalComment:
+        user.role === "INTERNAL" && canDo("comment", ticket, user, config),
       // 편집 UI 가 조용히 사라지지 않게, 막힌 이유를 함께 내린다
       editSolutionReason: editSolutionHint(ticket, user, config),
     },

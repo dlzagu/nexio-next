@@ -10,6 +10,7 @@ import type {
   User,
 } from "../types";
 import { USER_TYPE, type UserRole } from "../codes";
+import { splitBody } from "./request-body";
 
 /**
  * 티켓 조회. 원본 테이블 NX_OPTREPORTD(97컬럼) → 정규화된 TicketRow.
@@ -228,6 +229,38 @@ export async function listTickets(
   };
 }
 
+/**
+ * 보드의 '완료' 컬럼 — **완료일 기준** 최근 N일.
+ * ⚠️ 목록 필터의 기간(from/to)은 신청일(REQDATE) 기준이라 여기 쓸 수 없다.
+ *    오래전에 신청돼 어제 끝난 건이 통째로 빠진다.
+ */
+export async function listRecentlyDone(
+  user: User,
+  days = 30,
+  limit = 50,
+): Promise<TicketRow[]> {
+  const params: Param[] = [];
+  const scope = scopeClause(user, params);
+  // date('now') 는 UTC 다 — 저장값은 벽시계라 경계가 어긋난다. 앱에서 계산해 넘긴다
+  const since = new Date(Date.now() - days * 86_400_000);
+  params.push({
+    name: "since",
+    value: toWallClockIso(since)?.replace("T", " ") ?? "",
+  });
+
+  const rows = await select<RawRow>(
+    `SELECT ${ROW_SELECT} ${ROW_JOINS}
+      WHERE ${scope}
+        AND d.PROGRESS = '9'
+        AND COALESCE(d.REQTYPE,'') <> 'MIGRATION'
+        AND d.SUCCDATE >= @since
+      ORDER BY d.SUCCDATE DESC
+      LIMIT ${limit}`,
+    params,
+  );
+  return rows.map(toRow);
+}
+
 interface RawDetail extends RawRow {
   CONTENT: string | null;
   REQREMARKS: string | null;
@@ -338,6 +371,60 @@ export async function getTicket(
         .map(([label, v]) => ({ label, value: v ?? "" })),
     },
     comments: await getComments(echoNum, user.role),
+  };
+}
+
+/** 재신청 프리필 — 저장된 티켓을 **신청 폼의 입력값 모양**으로 되돌린다 */
+export interface ReRequestSeed {
+  custCode: string;
+  systemId: string;
+  moduleCode: string;
+  priority: string;
+  title: string;
+  symptom: string;
+  content: string;
+  isPublic: boolean;
+}
+
+export async function getReRequestSeed(
+  echoNum: string,
+  user: User,
+): Promise<ReRequestSeed | null> {
+  const params: Param[] = [];
+  const scope = scopeClause(user, params);
+  params.push({ name: "en", value: echoNum });
+
+  // scopeClause 는 d.* 만 참조하므로 조인 없이 그대로 쓸 수 있다
+  const rows = await select<{
+    CUSTCODE: string | null;
+    B1GUBUN: number | null;
+    MODULE: string | null;
+    REQLEVEL: string | null;
+    TITLE: string | null;
+    REMARKS: string | null;
+    CONTENT: string | null;
+    PUBLICYN: string | null;
+  }>(
+    `SELECT d.CUSTCODE, d.B1GUBUN, d.MODULE, d.REQLEVEL, d.TITLE,
+            d.REMARKS, d.CONTENT, d.PUBLICYN
+       FROM NX_OPTREPORTD d
+      WHERE d.ECHONUM = @en AND ${scope}`,
+    params,
+  );
+  const r = rows[0];
+  if (!r) return null;
+
+  const body = splitBody(r.CONTENT ?? "", r.REMARKS ?? "");
+  return {
+    custCode: trim(r.CUSTCODE),
+    systemId: r.B1GUBUN === null ? "" : String(r.B1GUBUN),
+    // 구시스템 이관분은 코드 대신 한글 원문이 들어 있다 → 코드표에 없으면 비운다
+    moduleCode: trim(r.MODULE) in MODULE ? trim(r.MODULE) : "",
+    priority: trim(r.REQLEVEL) || "3",
+    title: decodeEntities(trim(r.TITLE)),
+    symptom: body.symptom,
+    content: body.content,
+    isPublic: trim(r.PUBLICYN).toUpperCase() === "Y",
   };
 }
 

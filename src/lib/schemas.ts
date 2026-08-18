@@ -73,6 +73,8 @@ export const solutionPatchSchema = z.object({
   surTime: z.string().default(""),
 });
 
+export type SolutionPatch = z.output<typeof solutionPatchSchema>;
+
 export const actionSchema = z.object({
   echoNum: z.string().min(1),
   solution: solutionPatchSchema.optional(),

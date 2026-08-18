@@ -32,6 +32,15 @@ export function toWallClockIso(
   return s.replace(" ", "T").replace(/(?:Z|[+-]\d\d:?\d\d)$/, "");
 }
 
+/**
+ * 저장 형식 'YYYY-MM-DD HH:MM:SS'.
+ * 🔴 UTC 로 바꾸지 않는다 — 저장값 전체가 타임존 없는 벽시계라
+ *    새로 쓰는 행만 UTC 로 넣으면 기존 행과 9시간 어긋난다 (toWallClockIso 주석 참조).
+ */
+export function toDbStamp(d: Date = new Date()): string {
+  return format(d, "yyyy-MM-dd HH:mm:ss");
+}
+
 export function toValidDate(
   input: string | Date | null | undefined,
 ): Date | null {
@@ -107,7 +116,27 @@ export function decodeEntities(s: string | null | undefined): string {
     );
 }
 
-/** HTML 을 걷어낸 요약 텍스트 — 목록의 미리보기용 */
+/**
+ * HTML → 평문. **문단 구분을 줄바꿈으로 살린다** — 재신청 프리필처럼
+ * 저장된 HTML 을 textarea 로 되돌릴 때 쓴다 (한 줄로 뭉개면 원문을 못 알아본다).
+ * 저장값이 이스케이프된 HTML 인 레코드가 있어(`&lt;div&gt;`) 먼저 풀고 태그를 걷는다.
+ * 그 다음 한 번 더 풀어 본문의 실제 엔티티(`&#39;`)까지 평문으로 만든다.
+ */
+export function htmlToPlain(html: string | null | undefined): string {
+  if (!html) return "";
+  const text = decodeEntities(html)
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, "");
+  return decodeEntities(text)
+    .split("\n")
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** HTML 을 걷어낸 요약 텍스트 — 목록의 미리보기용 (줄바꿈까지 공백으로 접는다) */
 export function plainPreview(
   html: string | null | undefined,
   max = 140,

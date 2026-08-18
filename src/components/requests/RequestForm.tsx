@@ -9,6 +9,7 @@ import {
   Send,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -23,6 +24,7 @@ import {
   requestFormSchema,
   type RequestForm as FormValues,
 } from "@/lib/schemas";
+import type { ReRequestSeed } from "@/lib/data/tickets";
 import type { CustomerConfig, User } from "@/lib/types";
 
 const toOptions = (m: Record<string, string>): Option[] =>
@@ -42,6 +44,7 @@ export function RequestForm({
   systems,
   contractTime,
   reRequestFrom,
+  initial,
 }: {
   user: User;
   config: CustomerConfig | null;
@@ -50,10 +53,17 @@ export function RequestForm({
   systems: Option[];
   contractTime: { month: number; used: number; remain: number } | null;
   reRequestFrom: string | null;
+  /** 재신청 프리필. null 이면 빈 양식 */
+  initial: ReRequestSeed | null;
 }) {
+  const router = useRouter();
   const [advanced, setAdvanced] = useState(false);
   const [pasteWarning, setPasteWarning] = useState(false);
-  const [submitState, setSubmitState] = useState<string | null>(null);
+  const [submitState, setSubmitState] = useState<{
+    text: string;
+    failed: boolean;
+  } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [files, setFiles] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -71,17 +81,17 @@ export function RequestForm({
     resolver: zodResolver(requestFormSchema),
     mode: "onBlur",
     defaultValues: {
-      custCode: isCustomer ? user.custCode : "",
+      custCode: initial?.custCode || (isCustomer ? user.custCode : ""),
       requesterId: defaultRequester,
       requesterEmail: user.email ?? "",
-      systemId: "",
-      title: "",
-      symptom: "",
-      content: "",
-      moduleCode: "",
-      priority: "3",
+      systemId: initial?.systemId ?? "",
+      title: initial?.title ?? "",
+      symptom: initial?.symptom ?? "",
+      content: initial?.content ?? "",
+      moduleCode: initial?.moduleCode ?? "",
+      priority: initial?.priority ?? "3",
       scheDate: "",
-      isPublic: !(config?.defaultPrivate ?? true),
+      isPublic: initial ? initial.isPublic : !(config?.defaultPrivate ?? true),
       refEmails: [],
     },
   });
@@ -97,11 +107,42 @@ export function RequestForm({
     message: String(errors[k as keyof FormValues]?.message ?? ""),
   }));
 
-  const onSubmit = () => {
-    setSubmitState(
-      "권한·검증은 통과했지만 데모 DB 쓰기가 비활성 상태라 저장되지 않았습니다. " +
-        "환경변수 ALLOW_DEV_WRITES=true 로 켜면 저장 경로가 열립니다.",
-    );
+  const onSubmit = async (values: FormValues) => {
+    setSubmitting(true);
+    setSubmitState(null);
+    try {
+      const res = await fetch("/api/requests", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...values, from: reRequestFrom ?? "" }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        echoNum?: string;
+        message?: string;
+        code?: string;
+      };
+      if (res.status === 201 && body.echoNum) {
+        // 저장된 건을 바로 열어 준다 — "접수됐는지 모르겠다"가 남지 않게.
+        // 이동이 끝날 때까지 submitting 을 풀지 않아 중복 제출을 막는다.
+        router.push(
+          `/requests?view=mine&open=${encodeURIComponent(body.echoNum)}`,
+        );
+        return;
+      }
+      setSubmitState({
+        text:
+          body.message ??
+          `요청을 저장하지 못했습니다 (${body.code ?? `HTTP ${res.status}`}).`,
+        // 202(쓰기 비활성)는 실패가 아니라 "여기까지는 통과" 라는 안내다
+        failed: res.status !== 202,
+      });
+    } catch (e) {
+      setSubmitState({
+        text: `요청을 보내지 못했습니다 — ${e instanceof Error ? e.message : String(e)}`,
+        failed: true,
+      });
+    }
+    setSubmitting(false);
   };
 
   const onInvalid = () => {
@@ -137,15 +178,22 @@ export function RequestForm({
       </header>
 
       {reRequestFrom ? (
-        <Notice tone="accent">
-          ↻ <span className="mono">{reRequestFrom}</span> 의 내용을
-          불러왔습니다. 프리필된 값은 그대로 제출하거나 수정할 수 있습니다.{" "}
-          <Link
-            href={`/requests?view=all&open=${encodeURIComponent(reRequestFrom)}`}
-          >
-            원본 보기
-          </Link>
-        </Notice>
+        initial ? (
+          <Notice tone="accent">
+            ↻ <span className="mono">{reRequestFrom}</span> 의 내용을
+            불러왔습니다. 프리필된 값은 그대로 제출하거나 수정할 수 있습니다.{" "}
+            <Link
+              href={`/requests?view=all&open=${encodeURIComponent(reRequestFrom)}`}
+            >
+              원본 보기
+            </Link>
+          </Notice>
+        ) : (
+          <Notice tone="warning">
+            ↻ <span className="mono">{reRequestFrom}</span> 을 찾을 수 없어 빈
+            양식으로 시작합니다. 접수번호를 확인해 주세요.
+          </Notice>
+        )
       ) : null}
 
       {/* 이메일 누락은 이 화면에서 해결할 수 없다 → 인라인 오류 대신 차단 배너 */}
@@ -446,10 +494,10 @@ export function RequestForm({
       ) : null}
 
       {submitState ? (
-        <Notice tone="info">
+        <Notice tone={submitState.failed ? "danger" : "info"}>
           <span className="flex items-start gap-1.5">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden />
-            {submitState}
+            {submitState.text}
           </span>
         </Notice>
       ) : null}
@@ -462,10 +510,10 @@ export function RequestForm({
         <button
           type="submit"
           className="btn btn-primary btn-lg"
-          disabled={emailMissing}
+          disabled={emailMissing || submitting}
         >
           <Send size={14} aria-hidden />
-          신청하기
+          {submitting ? "접수 중…" : "신청하기"}
         </button>
       </div>
     </form>

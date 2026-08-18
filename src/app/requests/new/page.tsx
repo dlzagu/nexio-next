@@ -1,5 +1,6 @@
 import { RequestForm } from "@/components/requests/RequestForm";
 import { getMeta } from "@/lib/data/meta";
+import { getReRequestSeed } from "@/lib/data/tickets";
 import { currentUser, loadCustomerConfig } from "@/lib/session";
 
 export const metadata = { title: "서비스 신청 · 넥시오" };
@@ -17,9 +18,12 @@ export default async function NewRequestPage({
   const user = await currentUser();
   if (!user) return null;
 
-  const [meta, config] = await Promise.all([
+  const from = one(sp.from) || null;
+  const [meta, config, initial] = await Promise.all([
     getMeta(user),
     loadCustomerConfig(user.custCode),
+    // 볼 수 없는 건은 프리필도 없다 — getReRequestSeed 가 가시성 게이트를 지난다
+    from ? getReRequestSeed(from, user) : Promise.resolve(null),
   ]);
 
   return (
@@ -30,7 +34,8 @@ export default async function NewRequestPage({
       requesters={meta.requesters}
       systems={meta.systems}
       contractTime={meta.contractTime}
-      reRequestFrom={one(sp.from) || null}
+      reRequestFrom={from}
+      initial={initial}
     />
   );
 }
