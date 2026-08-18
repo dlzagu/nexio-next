@@ -1,5 +1,9 @@
 ﻿# BFF 설계 — Next.js route handler
 
+> ⚠️ **폐기된 전제 — 역사 기록.** Spring 백엔드 연동은 폐기됐다(ADR-0004).
+> 이 문서는 **원본 시스템을 분석해 얻은 사실**이라 남겨 두지만, 현재 코드의 규칙이 아니다.
+> 현행 라우트 규칙은 `.claude/rules/bff.md`, 쓰기 경로는 `../decisions/ADR-0006` 이다.
+>
 > Spring 은 수정하지 않는다. Next.js route handler 가 **유일한 서버 통신 창구**다.
 > 근거: `../inventory/api-map.md`(엔드포인트 41) · `types-spec.md`(이름 정규화) · `permissions-spec.md`
 

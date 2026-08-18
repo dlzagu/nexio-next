@@ -31,6 +31,11 @@ function isOperatorUser() {
 
 ## 1. 협력업체 격리 — `operCompany` (놓치면 안 되는 축)
 
+> 🚧 **이 축은 이식하지 않았다.** 데모 시드에는 운영시스템의 담당 회사(`operCompany`)가
+> 없어서, 외부업체 격리를 **배정(`SUCCERSON`) 기준**으로 좁혔다 (`data/tickets.ts` scopeClause).
+> 방향은 같다(fail-closed) — 축이 하나 적을 뿐이다. 아래 §5 의 A안 근거가 이 격리에
+> 기대고 있으므로, 원본으로 돌아갈 때는 이 절부터 다시 읽어야 한다.
+
 `canOperateCurrentDetail()` (`ST001.jsp:5314`)
 
 ```js
