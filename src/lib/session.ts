@@ -16,6 +16,7 @@ export const DEFAULT_USER_ID = "sy.kim";
 /** 역할 전환용 페르소나 — 권한 모델의 네 축을 모두 체험할 수 있게 구성 */
 export const PERSONAS = [
   { id: "sy.kim", hint: "운영팀 (내부)" },
+  { id: "th.oh", hint: "운영팀 관리자 — 고객사 비활성 가능" },
   { id: "hb.yoon", hint: "고객사 — 한빛제약 (승인권자)" },
   { id: "sj.moon", hint: "고객사 — 세진식품" },
   { id: "vd.kang", hint: "외부업체 (배정건만)" },

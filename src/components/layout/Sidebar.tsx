@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Building2,
   FilePlus2,
   KanbanSquare,
   LayoutDashboard,
@@ -18,6 +19,11 @@ const NAV = [
   { href: "/board", label: "업무 현황", icon: KanbanSquare },
   { href: "/requests/new", label: "서비스 신청", icon: FilePlus2 },
   { href: "/notices", label: "공지사항", icon: Megaphone },
+] as const;
+
+/** 운영팀만 보이는 메뉴 — 고객사에게는 다른 회사의 존재 자체를 노출하지 않는다 */
+const INTERNAL_NAV = [
+  { href: "/customers", label: "고객사 관리", icon: Building2 },
 ] as const;
 
 export function Sidebar({
@@ -48,21 +54,30 @@ export function Sidebar({
       </div>
 
       <nav className="flex flex-col gap-0.5 p-2" aria-label="주 메뉴">
-        {NAV.map(({ href, label, icon: Icon }) => {
-          const active =
-            href === "/requests"
-              ? pathname === "/requests"
-              : pathname.startsWith(href);
-          return (
-            <Link key={href} href={href} className="nav-i" data-active={active}>
-              <Icon size={15} aria-hidden />
-              <span className="flex-1">{label}</span>
-              {href === "/requests" && (openCount ?? 0) > 0 ? (
-                <span className="num text-11 text-fg-subtle">{openCount}</span>
-              ) : null}
-            </Link>
-          );
-        })}
+        {[...NAV, ...(user.role === "INTERNAL" ? INTERNAL_NAV : [])].map(
+          ({ href, label, icon: Icon }) => {
+            const active =
+              href === "/requests"
+                ? pathname === "/requests"
+                : pathname.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className="nav-i"
+                data-active={active}
+              >
+                <Icon size={15} aria-hidden />
+                <span className="flex-1">{label}</span>
+                {href === "/requests" && (openCount ?? 0) > 0 ? (
+                  <span className="num text-11 text-fg-subtle">
+                    {openCount}
+                  </span>
+                ) : null}
+              </Link>
+            );
+          },
+        )}
       </nav>
 
       <div className="border-line-subtle mt-auto border-t p-2">

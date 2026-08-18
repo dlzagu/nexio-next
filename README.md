@@ -12,9 +12,9 @@
 
 | | |
 |---|---|
-| **규모** | 화면 7개 + 알림센터 · TypeScript 12,100줄(+테스트 2,200줄) · 설계 기록(ADR) 10건 |
+| **규모** | 화면 8개 + 알림센터 · TypeScript 12,100줄(+테스트 2,200줄) · 설계 기록(ADR) 10건 |
 | **스택** | Next.js 16(App Router) · React 19 · TypeScript strict · Tailwind 4 + 자체 토큰 · Radix UI · SQLite/libSQL · Vitest · GitHub Actions · Vercel |
-| **검증** | 테스트 131개 · lint → typecheck → test → build 자동 실행 |
+| **검증** | 테스트 138개 · lint → typecheck → test → build 자동 실행 |
 
 ![대시보드](docs/screenshots/01-dashboard.png)
 
@@ -90,7 +90,17 @@
 
 `src/lib/data/mutations.ts` · `docs/decisions/ADR-0006` · `ADR-0008`(첨부)
 
-### 5. 레거시 데이터를 안전하게 다룬다
+### 5. 권한은 티켓 밖에서도 같은 방식으로 판정한다
+
+고객사 관리 화면(운영팀 전용)에서 **등록과 비활성의 권한이 다릅니다** — 등록은 운영팀,
+비활성은 운영팀 관리자만. 막힌 버튼은 숨기지 않고 **왜 막혔는지 문장으로** 알려줍니다.
+
+"삭제"는 행 삭제가 아니라 비활성입니다. 티켓 수천 건이 고객사 코드를 참조하므로 지우면
+과거 이력이 끊깁니다 — 이 앱에는 지우는 경로가 없습니다(쓰기 관문이 DELETE 를 거부합니다).
+
+`docs/decisions/ADR-0010`
+
+### 6. 레거시 데이터를 안전하게 다룬다
 
 원본 DB 는 본문을 **이스케이프된 HTML**로 저장합니다. 디코드 → 새니타이즈 **순서**를 지켜야
 하고(뒤집으면 필터를 통과한 마크업이 살아납니다), 저장 시점에도 새니타이즈합니다.
@@ -140,7 +150,7 @@ SQLite 호환 저장소
 
 ## 검증 · 배포
 
-- **CI** (GitHub Actions): push/PR 마다 `verify`(lint·typecheck·테스트 131개) → `format:check` → `build`
+- **CI** (GitHub Actions): push/PR 마다 `verify`(lint·typecheck·테스트 138개) → `format:check` → `build`
 - **CD** (Vercel Git 연동): `main` push → 프로덕션 배포, PR → 프리뷰 URL 자동 발급
 - 테스트는 개수보다 **무엇을 고정하는가**가 기준입니다 — 권한 fail-closed, 데이터 위생(디코드·
   새니타이즈 순서), 쓰기 트랜잭션 원자성, 시드 불변식

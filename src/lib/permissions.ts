@@ -203,3 +203,39 @@ export function cancelHint(
   }
   return "현재 단계에서는 취소할 수 없습니다. 담당자에게 문의해 주세요.";
 }
+
+/* ── 고객사 관리 ──────────────────────────────────────────── */
+
+/**
+ * 고객사 등록·수정은 운영팀만. 고객사 사용자에게는 **다른 회사의 존재 자체**를 보이지 않는다.
+ */
+export function canManageCustomers(user: User | null): boolean {
+  return user?.role === "INTERNAL";
+}
+
+/**
+ * 🔒 고객사 비활성(=삭제)은 운영팀 **관리자**만.
+ *
+ * 실제로 행을 지우지 않는다 — 티켓 수천 건이 고객사 코드를 참조하고 있어서
+ * 지우는 순간 과거 이력이 어디에도 매달리지 못한다. `ACTIVE='N'` 으로 내리면
+ * 목록·선택지에서 사라지고(사용자에게는 삭제와 같다) 이력은 그대로 남는다.
+ *
+ * 계정 체계가 없는 데모라 **기본 페르소나는 전부 불가**다 — 역할 전환에서
+ * 관리자로 바꿨을 때만 열린다(게이트가 작동하는 걸 보여주기 위해).
+ */
+export function canDeactivateCustomer(user: User | null): boolean {
+  if (!canManageCustomers(user)) return false;
+  return !!user?.isApprover;
+}
+
+/** 왜 막혔는지 — 버튼이 조용히 사라지면 "왜 안 되지"가 남는다 */
+export function customerAdminHint(user: User | null): string | null {
+  if (!user) return "로그인이 필요합니다.";
+  if (!canManageCustomers(user)) {
+    return "고객사 관리는 운영팀만 사용할 수 있습니다.";
+  }
+  if (!canDeactivateCustomer(user)) {
+    return "고객사 비활성화는 운영팀 관리자만 할 수 있습니다. (역할 전환에서 '운영팀 관리자'로 바꿔 보세요)";
+  }
+  return null;
+}

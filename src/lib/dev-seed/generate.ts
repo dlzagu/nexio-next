@@ -242,7 +242,7 @@ function seed(db: DB): void {
       INTERNAL_COMPANY.code,
       m.dept,
       `${m.id}@${INTERNAL_COMPANY.domain}.example`,
-      "N",
+      m.approver ? "Y" : "N",
     );
   }
   for (const m of VENDOR_MEMBERS) {

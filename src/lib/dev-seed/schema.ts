@@ -6,11 +6,12 @@
  * 날짜는 TEXT('YYYY-MM-DD HH:MM:SS') — SQLite date 함수·문자열 비교 모두 동작한다.
  */
 /**
- * 스키마가 바뀔 때마다 올린다. 로컬 `.data/nexio.db` 는 파일로 남아 있어서,
+ * 스키마가 바뀔 때마다 올린다. **시드 구성이 바뀔 때도** 올린다 —
+ * 예: 페르소나로 쓰는 계정이 늘면 옛 DB 에는 그 계정이 없어 역할 전환이 조용히 실패한다. 로컬 `.data/nexio.db` 는 파일로 남아 있어서,
  * 컬럼을 추가해도 이전 DB 가 그대로 열려 "없는 컬럼" 오류가 난다 →
  * 버전이 다르면 ensureSeed 가 통째로 다시 만든다 (데모 DB 라 잃을 게 없다).
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const SCHEMA_SQL = `
 CREATE TABLE NX_SCHEMA (VERSION INTEGER NOT NULL);

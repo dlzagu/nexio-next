@@ -144,3 +144,20 @@ export const actionSchema = z.object({
   ]),
   reason: z.string().optional().default(""),
 });
+
+/** 고객사 등록 폼 — 화면과 라우트가 같은 스키마를 본다 */
+export const newCustomerSchema = z.object({
+  custCode: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9]{3,10}$/, "고객사 코드는 영문·숫자 3~10자입니다"),
+  custName: z.string().trim().min(1, "고객사명을 입력해 주세요").max(60),
+  systemName: z.string().trim().max(40).optional().default(""),
+  usesApproval: z.boolean().optional().default(false),
+  usesTestStage: z.boolean().optional().default(false),
+  usesSystemStage: z.boolean().optional().default(false),
+  defaultPrivate: z.boolean().optional().default(true),
+  showsContractTime: z.boolean().optional().default(false),
+});
+
+export type NewCustomerForm = z.input<typeof newCustomerSchema>;

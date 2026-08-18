@@ -47,6 +47,8 @@ export const VENDOR_COMPANY = {
 
 export const INTERNAL_MEMBERS: SeedMember[] = [
   { id: "sy.kim", name: "김서연", dept: "서비스운영팀" },
+  // 운영팀 안에서도 **고객사를 비활성화할 수 있는 사람**은 따로다 (APPROVER='Y' 로 표현)
+  { id: "th.oh", name: "오태현", dept: "서비스운영팀", approver: true },
   { id: "jh.lee", name: "이준호", dept: "서비스운영팀" },
   { id: "mj.park", name: "박민지", dept: "서비스운영팀" },
   { id: "hw.choi", name: "최현우", dept: "서비스운영팀" },
