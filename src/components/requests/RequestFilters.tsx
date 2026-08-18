@@ -74,7 +74,7 @@ export function RequestFilters({
             onChange={(e) => setKw(e.target.value)}
             placeholder="제목 · 내용 · 요청번호 검색"
             aria-label="검색어"
-            className="input pl-8"
+            className="input input-lead"
           />
         </form>
 

@@ -8,16 +8,27 @@
  *   npm run dev            # 다른 터미널에서 (기본 포트 3000)
  *   node scripts/screenshots.mjs
  *
+ * playwright 를 저장소 밖(임시 폴더)에 설치했다면 그 위치를 알려 준다 —
+ * ESM 은 NODE_PATH 를 보지 않아서, 경로를 넘기는 것 말고는 방법이 없다:
+ *
+ *   PLAYWRIGHT_MODULE=file:///C:/tmp/pw/node_modules/playwright/index.mjs \
+ *     node scripts/screenshots.mjs
+ *
  * 결과물 → docs/screenshots/*.png (README 가 참조한다)
  */
-import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+
+const { chromium } = await import(
+  process.env.PLAYWRIGHT_MODULE ?? "playwright"
+);
 
 const BASE = process.env.SHOT_BASE ?? "http://localhost:3000";
 const OUT =
   process.env.SHOT_OUT ?? path.join(process.cwd(), "docs", "screenshots");
 const VIEWPORT = { width: 1440, height: 900 };
+/** 아이폰 13 급 — 실제로 가장 좁게 쓰이는 폭이다 */
+const MOBILE = { width: 390, height: 844 };
 
 /** 캡처 목록 — 이름 · 경로 · 찍기 전에 할 일 */
 const SHOTS = [
@@ -60,6 +71,34 @@ const SHOTS = [
     wait: ".card",
     dark: true,
   },
+
+  /* ── 좁은 화면 ─────────────────────────────────────────────
+     데스크톱 샷만 올리면 "좁은 화면은 안 봤겠지"로 읽힌다. 실제로 그랬고,
+     그래서 고쳤다 — 고친 결과도 같은 자리에서 보여준다. */
+  {
+    name: "07-mobile-dashboard",
+    url: "/dashboard",
+    wait: ".card",
+    viewport: MOBILE,
+  },
+  {
+    name: "08-mobile-requests",
+    url: "/requests?view=open",
+    wait: "tbody tr",
+    viewport: MOBILE,
+  },
+  {
+    name: "09-mobile-nav",
+    url: "/requests?view=open",
+    wait: "tbody tr",
+    viewport: MOBILE,
+    // 서랍을 연 상태 — 좁은 화면의 주 메뉴가 여기로 들어갔다는 것이 핵심이다
+    async before(page) {
+      await page.click('button[aria-label="메뉴 열기"]');
+      await page.waitForSelector(".drawer");
+      await page.waitForTimeout(500);
+    },
+  },
 ];
 
 /**
@@ -101,12 +140,15 @@ mkdirSync(OUT, { recursive: true });
 
 for (const shot of SHOTS) {
   const context = await browser.newContext({
-    viewport: VIEWPORT,
+    viewport: shot.viewport ?? VIEWPORT,
     // 2배로 찍어야 README 에서 흐리지 않다
     deviceScaleFactor: 2,
     colorScheme: shot.dark ? "dark" : "light",
     locale: "ko-KR",
     timezoneId: "Asia/Seoul",
+    // 좁은 화면 샷은 실제로 손가락으로 쓰는 환경이어야 의미가 있다
+    isMobile: !!shot.viewport,
+    hasTouch: !!shot.viewport,
   });
   const page = await context.newPage();
 

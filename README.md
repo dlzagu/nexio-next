@@ -14,7 +14,8 @@
 |---|---|
 | **규모** | 화면 8개 + 알림센터 · TypeScript 12,100줄(+테스트 2,200줄) · 설계 기록(ADR) 10건 |
 | **스택** | Next.js 16(App Router) · React 19 · TypeScript strict · Tailwind 4 + 자체 토큰 · Radix UI · SQLite/libSQL · Vitest · GitHub Actions · Vercel |
-| **검증** | 테스트 162개 · lint → typecheck → test → build 자동 실행 |
+| **검증** | 테스트 162개 · lint → typecheck → test → build → 런타임 스모크 자동 실행 |
+| **측정** | Lighthouse 접근성·권장사항·SEO **전 화면 100** · 데스크톱 성능 97~99 |
 
 ![대시보드](docs/screenshots/01-dashboard.png)
 
@@ -47,6 +48,24 @@
 </tr>
 </table>
 
+### 좁은 화면 (390px)
+
+데스크톱 우선으로 만들고 좁은 화면을 열어보지 않았더니, **216px 사이드바가 본문을 159px 로**
+만들고 있었습니다. 고치면서 정한 원칙은 하나입니다 — 줄여서 우겨넣지 않고 **무엇을 접을지**만 정한다.
+
+<table>
+<tr>
+<td width="33%"><a href="docs/screenshots/07-mobile-dashboard.png"><img src="docs/screenshots/07-mobile-dashboard.png" alt="모바일 대시보드"></a></td>
+<td width="33%"><a href="docs/screenshots/08-mobile-requests.png"><img src="docs/screenshots/08-mobile-requests.png" alt="모바일 요청 조회"></a></td>
+<td width="33%"><a href="docs/screenshots/09-mobile-nav.png"><img src="docs/screenshots/09-mobile-nav.png" alt="모바일 주 메뉴 서랍"></a></td>
+</tr>
+<tr>
+<td><b>대시보드</b> — 카드는 2열로 접히고 목록은 그대로 읽힌다</td>
+<td><b>요청 조회</b> — 표를 <b>옆으로 밀지 않는다.</b> 밀어야 보이는 열은 있다는 사실조차 모르므로, 단계·제목·댓글만 남기고 나머지는 상세에서 본다</td>
+<td><b>주 메뉴</b> — 사이드바가 서랍으로 들어간다. <b>같은 컴포넌트</b>를 재사용해 메뉴가 두 벌로 갈라지지 않는다</td>
+</tr>
+</table>
+
 ## 핵심 구현
 
 ### 1. 레거시 재설계 — 무엇을 **안 만들 것인가**부터 정했다
@@ -68,10 +87,13 @@
 접근성 규칙을 시스템 차원에서 강제합니다 — 상태를 **색만으로 구분하지 않고**(상태군마다 글리프가
 다르다), 드래그가 필요한 곳에는 키보드 대안을 함께 둡니다.
 
-좁은 화면에서는 **무엇을 접을지**만 정합니다 — 216px 사이드바는 서랍으로 들어가고(같은
-컴포넌트를 재사용합니다), 표는 가로로 밀지 않고 덜 중요한 열을 접습니다. 옆으로 밀어야
-보이는 열은 있다는 사실조차 알 수 없기 때문입니다. 그리고 **재서 확인합니다** — Lighthouse 접근성
-전 화면 100 (`docs/measurements/summary.md`).
+그리고 **고려했다고 말하지 않고 잽니다.** 재 보니 다섯 군데가 틀려 있었습니다 — 대비 4.33:1,
+역할 없는 `span` 의 `aria-label`(스크린리더가 무시합니다), 칩이 생기면 이름이 사라지는 입력.
+고친 뒤 **전 화면 Lighthouse 접근성 100 · 권장사항 100 · SEO 100**입니다
+(`npm run measure` · `docs/measurements/summary.md`).
+
+반응형도 같은 시스템 위에서 처리합니다 — 모바일 글자 크기는 토큰 한 줄(`--fs-11`)로 올리고,
+접기 규칙은 컴포넌트가 아니라 표의 열 정의(`meta.fold`)가 쥡니다.
 
 > 토큰 정본은 `docs/design/tokens.css` 이고 앱은 복사본을 씁니다 — 손으로 고치지 않습니다.
 
@@ -167,7 +189,7 @@ SQLite 호환 저장소
 - 익명화 전 이력이 원격으로 새지 않도록 `pre-push` 훅이 막습니다 — 브랜치 이름뿐 아니라
   **커밋 소속**으로도 판정해 이름을 바꿔 밀어도 걸립니다 (`.githooks/`, `npm install` 이 연결)
 - **접근성·성능은 재서 기록합니다** (`npm run measure`) — 전 화면 Lighthouse **접근성 100 ·
-  권장사항 100 · SEO 100**, 데스크톱 성능 98~99. 수치는 `docs/measurements/summary.md`
+  권장사항 100 · SEO 100**, 데스크톱 성능 97~99. 수치는 `docs/measurements/summary.md`
   (실제로 재 보고서야 대비 4.33:1·역할 없는 `span` 의 `aria-label`·이름 없는 입력을 찾았습니다)
 - **코드와 데모 데이터의 배포 경로가 다릅니다** — 코드는 push 로 배포되지만 공유 DB 는
   따라오지 않습니다. 어긋나면 진단이 500 으로 신고하고, `db:sync:remote` 가 마스터만
