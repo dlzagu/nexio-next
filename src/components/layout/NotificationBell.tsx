@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 import { fmtRelative } from "@/lib/format";
+import {
+  READ_STATE_CHANGED,
+  announceReadStateChanged,
+} from "@/lib/read-signal";
 import type { NotificationItem } from "@/lib/data/notifications";
 
 /**
@@ -23,6 +27,8 @@ export function NotificationBell() {
     total: number;
   } | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  /** 다시 읽어야 할 이유가 생겼다는 표시 (다른 화면에서 읽음 처리가 일어난 경우) */
+  const [tick, setTick] = useState(0);
 
   /**
    * 마운트 시 한 번, 그리고 열 때마다 읽는다.
@@ -37,7 +43,18 @@ export function NotificationBell() {
     return () => {
       alive = false;
     };
-  }, [open]);
+  }, [open, tick]);
+
+  /**
+   * 상세를 열어 읽은 건은 여기서도 사라져야 한다.
+   * 이 위젯은 자기 데이터를 직접 fetch 하므로 서버 리렌더(router.refresh)로는 안 바뀐다 —
+   * 배지만 옛 숫자로 남으면 "지워지지 않는 알림"으로 보인다.
+   */
+  useEffect(() => {
+    const onChanged = () => setTick((n) => n + 1);
+    window.addEventListener(READ_STATE_CHANGED, onChanged);
+    return () => window.removeEventListener(READ_STATE_CHANGED, onChanged);
+  }, []);
 
   const go = (echoNum: string) => {
     setOpen(false);
@@ -56,6 +73,7 @@ export function NotificationBell() {
       setData({ items: [], total: 0 });
       setNote(null);
       router.refresh();
+      announceReadStateChanged();
       return;
     }
     const body = (await res.json().catch(() => ({}))) as { message?: string };

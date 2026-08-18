@@ -14,6 +14,7 @@ import { TabPanel, Tabs, type TabDef } from "@/components/ui/Tabs";
 import { cn } from "@/lib/cn";
 import { USER_ROLE_LABEL, isTerminal } from "@/lib/codes";
 import { fmtDate, fmtDateTime, fmtRelative } from "@/lib/format";
+import { announceReadStateChanged } from "@/lib/read-signal";
 import type { ActionSpec } from "@/lib/permissions";
 import type { CustomerConfig, TicketDetail } from "@/lib/types";
 import { Composer } from "./Composer";
@@ -107,7 +108,11 @@ export function DetailSheet({
         // 안 읽은 글이 있을 때만 쓴다 — 열 때마다 UPSERT 하지 않는다
         if (p.ticket.hasUnreadComment) {
           void markTicketRead(echoNum)
-            .then((saved) => alive && saved && router.refresh())
+            .then((saved) => {
+              if (!alive || !saved) return;
+              router.refresh(); // 목록 뱃지·대시보드 카드 (서버 렌더)
+              announceReadStateChanged(); // 상단 종 (직접 fetch 하는 위젯)
+            })
             .catch((e: unknown) => console.error("[읽음 처리 실패]", e));
         }
       })

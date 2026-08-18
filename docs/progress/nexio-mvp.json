@@ -623,14 +623,16 @@
           "verify": [
             "npm run verify 통과 — 테스트 110개(신규 4: 승인 fail-closed 1 · 미읽음 축 3)",
             "라이브(dev) 실측: /requests /board /notices /requests/new /api/diag /api/notifications 전부 200 · 새 탭 콘솔 오류 0",
-            "쓰기 OFF(배포 기본값) 재현: POST /api/notifications → 202 WRITE_DISABLED, 뱃지 그대로 · 콘솔 오류 없음"
+            "쓰기 OFF(배포 기본값) 재현: POST /api/notifications → 202 WRITE_DISABLED, 뱃지 그대로 · 콘솔 오류 없음",
+            "UI 실측(dev, 쓰기 ON): 종 클릭 → 알림 항목 클릭 → 상세 시트 열림 → 배지 2→1 (클라이언트 이동, 새로고침 없음)"
           ],
           "result": [
             "① NX-DEBUG try/catch + 동적 import 제거 — src/app/requests/page.tsx 가 형제 화면(board·notices)과 같은 모양(정적 import·단일 함수)으로 돌아갔다. 라이브 확인: /requests·/requests?view=mine 200, 응답 본문에 NX-DEBUG 문자열 0건",
             "② permissions.ts 승인·반려 게이트를 `!config?.usesApproval` 로 통일 — 미등록 고객사(config=null)에서 승인권자가 통과하던 구멍을 닫았다. 회귀 테스트: config 미전달·null 두 경우 모두 차단 + 확장 단계와 같은 축인지 확인",
             "③ 상세를 열면 그 건이 읽음으로 내려간다 — DetailSheet 이 로드 성공 시 hasUnreadComment 일 때만 POST /api/notifications {echoNum} → 200 이면 router.refresh(). 라이브 실측: 종 배지 5→4→3→2, 대시보드 미읽음 144→143→142. 쓰기 꺼진 기본 설정에서는 202 라 아무것도 지우지 않는다(콘솔 오류 없음)",
             "④ 미읽음 축 정본 신설(src/lib/data/read-state.ts) — 알림·목록 뱃지·대시보드 집계·댓글 수가 같은 가드를 쓴다. 내부 전용 댓글은 고객사에게 세지도 미읽음으로 잡히지도 않는다",
-            "➕ ③을 고치며 드러난 것: 읽음 처리 범위가 소유(CUSTPERSON/SUCCERSON)로 좁혀 있어 운영팀이 남의 건을 열어도 점이 안 지워졌다 → 가시성(scopeClause)으로 교체. 못 보는 건은 읽음선도 못 만든다(fail-closed, 테스트로 고정)"
+            "➕ ③을 고치며 드러난 것: 읽음 처리 범위가 소유(CUSTPERSON/SUCCERSON)로 좁혀 있어 운영팀이 남의 건을 열어도 점이 안 지워졌다 → 가시성(scopeClause)으로 교체. 못 보는 건은 읽음선도 못 만든다(fail-closed, 테스트로 고정)",
+            "➕ ③의 나머지 반쪽: 상단 종 배지는 자기 데이터를 직접 fetch 하므로 router.refresh() 로 안 바뀐다 → src/lib/read-signal.ts 신호를 쏘고 종이 구독한다. 실측: 알림 클릭 → 상세 열림 → 팝오버를 다시 열지 않아도 배지 2→1"
           ]
         },
         {
