@@ -68,6 +68,7 @@ export function RequestTable({
             {!c.row.original.isPublic ? (
               // 아이콘 자체는 title 을 받지 않는다 — 감싼 요소에 붙인다
               <span
+                role="img"
                 title={PRIVATE_HINT}
                 aria-label={PRIVATE_HINT}
                 className="flex shrink-0"
@@ -106,6 +107,7 @@ export function RequestTable({
               <span className="num">{r.commentCount}</span>
               {r.hasUnreadComment ? (
                 <span
+                  role="img"
                   aria-label="새 댓글"
                   className="bg-danger h-1.5 w-1.5 rounded-full"
                 />

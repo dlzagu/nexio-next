@@ -56,7 +56,7 @@
   --fg-default:var(--gray-900);
   --fg-strong:var(--gray-1000);
   --fg-muted:var(--gray-700);
-  --fg-subtle:var(--gray-600);
+  --fg-subtle:var(--gray-650);  /* 5.24:1 on --bg-canvas — gray-600 은 4.33 으로 AA 미달(실측) */
   --fg-placeholder:var(--gray-600);
   --fg-disabled:var(--gray-500);
   --fg-on-solid:var(--gray-0);

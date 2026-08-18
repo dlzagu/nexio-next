@@ -59,6 +59,10 @@ export function TokenInput({
         <input
           id={id}
           value={draft}
+          // 값이 하나라도 있으면 placeholder 를 지운다(칩과 겹쳐 보인다).
+          // 그런데 이 입력의 이름은 placeholder 뿐이라, 그때 **이름이 통째로 사라진다** —
+          // 스크린리더에는 "편집" 만 읽힌다. 보이는 글자와 무관하게 이름은 유지한다.
+          aria-label={placeholder}
           placeholder={values.length ? "" : placeholder}
           onChange={(e) => {
             setDraft(e.target.value);

@@ -110,6 +110,8 @@ export function MiniStepper({ progress }: { progress: string }) {
   return (
     <span
       className="mstp"
+      // 역할 없는 span 의 aria-label 은 무시된다 — 뜻을 전하는 그림이므로 img 로 선언한다
+      role="img"
       title={`${progressLabel(p)} (${filled}/5)`}
       aria-label={`${progressLabel(p)} — 5단계 중 ${filled}단계`}
     >

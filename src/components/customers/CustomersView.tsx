@@ -133,14 +133,24 @@ export function CustomersView({
                 <th className="num">미완료</th>
                 <th className="num">시스템</th>
                 <th>설정</th>
-                <th />
+                {/* 빈 헤더는 셀이 어느 열인지 알 수 없게 만든다 — 보이지 않게 이름만 붙인다 */}
+                <th>
+                  <span className="sr-only">작업</span>
+                </th>
               </tr>
             </thead>
             <tbody>
+              {/* 🔴 비활성을 opacity 로 표현하지 않는다 — 행 전체 대비가 2.3~4.4:1 로
+                  떨어져 AA 미달이었다(실측). 색을 낮추고 **배지로 말한다** */}
               {rows.map((r) => (
-                <tr key={r.custCode} className={cn(!r.active && "opacity-55")}>
+                <tr key={r.custCode}>
                   <td>
-                    <span className="text-fg-strong font-medium">
+                    <span
+                      className={cn(
+                        "font-medium",
+                        r.active ? "text-fg-strong" : "text-fg-muted",
+                      )}
+                    >
                       {r.custName}
                     </span>
                     {!r.active ? (

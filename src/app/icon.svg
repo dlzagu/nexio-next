@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="넥시오">
+  <rect width="32" height="32" rx="7" fill="#2f6feb" />
+  <path
+    d="M9 23V9h3.4l7.2 9.1V9H23v14h-3.4l-7.2-9.1V23H9z"
+    fill="#ffffff"
+  />
+</svg>

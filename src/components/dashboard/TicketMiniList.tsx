@@ -44,6 +44,7 @@ export function TicketMiniList({
                 <span className="num">{r.commentCount}</span>
                 {r.hasUnreadComment ? (
                   <span
+                    role="img"
                     aria-label="새 댓글"
                     className="bg-danger h-1.5 w-1.5 rounded-full"
                   />

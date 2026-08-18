@@ -102,7 +102,9 @@ export function Segmented<T extends string>({
         >
           {o.label}
           {typeof o.count === "number" ? (
-            <span className="num text-11 opacity-70">
+            // 흐리게가 아니라 **작게** 낮춘다 — opacity 로 죽이면 대비가 3.17:1 이라
+            // AA 미달이다(실측). 크기 차이만으로도 위계는 충분히 읽힌다.
+            <span className="num text-11">
               {o.count.toLocaleString("ko-KR")}
             </span>
           ) : null}
