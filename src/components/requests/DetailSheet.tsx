@@ -270,6 +270,8 @@ export function DetailSheet({
       open={!!echoNum}
       onOpenChange={(v) => !v && onClose()}
       resizable
+      // 스크롤은 탭 패널이 맡는다 — 탭 바와 댓글 입력창은 자리에 고정된다
+      bodyScroll={false}
       title={t ? t.title : (echoNum ?? "요청 상세")}
       header={
         t ? (

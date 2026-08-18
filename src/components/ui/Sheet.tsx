@@ -38,6 +38,7 @@ export function Sheet({
   children,
   className,
   resizable,
+  bodyScroll = true,
   widthKey = "nx-sheet-w",
 }: {
   open: boolean;
@@ -50,6 +51,15 @@ export function Sheet({
   className?: string;
   /** 헤더에 폭 조절 버튼을 노출한다 */
   resizable?: boolean;
+  /**
+   * 본문을 시트가 직접 스크롤한다 (기본값).
+   *
+   * 🔴 안쪽에 자체 스크롤 영역(탭 패널 등)을 두는 화면은 `false` 로 꺼야 한다.
+   *    켜 두면 본문이 **스크롤 컨테이너**가 되어 자식의 `flex-1 min-h-0` 이 무력화되고,
+   *    안쪽 영역은 스크롤되지 않으면서 `overscroll-behavior: contain` 때문에
+   *    **휠을 바깥으로 넘기지도 않는다** — 스크롤바를 직접 끌어야만 움직이는 상태가 된다.
+   */
+  bodyScroll?: boolean;
   widthKey?: string;
 }) {
   const [width, setWidth] = usePref<SheetWidth>(widthKey, "md", SHEET_WIDTHS);
@@ -120,7 +130,14 @@ export function Sheet({
             </div>
           </div>
 
-          <div className="scroll-y min-h-0 flex-1">{children}</div>
+          <div
+            className={cn(
+              "min-h-0 flex-1",
+              bodyScroll ? "scroll-y" : "flex flex-col",
+            )}
+          >
+            {children}
+          </div>
 
           {footer ? (
             <div className="border-line-subtle bg-subtle border-t px-5 py-3">
