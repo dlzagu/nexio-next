@@ -2,7 +2,7 @@
   "project": "넥시오 벤더포털 Next.js 재구축 — 포트폴리오 사이드 프로젝트 (2026-08-14 전환)",
   "ticket": "",
   "created_at": "2026-07-30",
-  "last_updated": "2026-08-14",
+  "last_updated": "2026-08-14 (P6.s4 쓰기 경로 · P8 메뉴 이식)",
   "scope": "MVP 3화면(조회/신청/대시보드) Next.js 재구축. 🔄 2026-08-14 사용자 결정으로 사이드 프로젝트 전환 — 회사 DB 연결 폐기, 자체 SQLite + 가상 시드, Vercel 배포 + CI/CD. 상세: ADR-0004",
   "owner": "원본 벤더포털 (사내 시스템)",
   "spec_doc": "docs/inventory/api-map.md",
@@ -439,11 +439,24 @@
         {
           "id": "s4",
           "name": "쓰기 경로 구현 (신청 저장 · 액션 · 댓글)",
-          "status": "pending",
+          "status": "done",
+          "file": "src/lib/data/mutations.ts",
           "logic": [
-            "현재는 UI·검증·권한판정까지만. 저장은 ALLOW_DEV_WRITES=false 로 차단돼 202/501 을 반환한다",
-            "선행 결정 필요: ① Spring 액션 API 연결(ADR-0001 로 복귀) vs ② 개발 DB 직접 UPDATE",
-            "②를 택하면 NX_OPTREPORTD_LOG(68컬럼)·NX_HISTORY 이력 규칙을 먼저 확인해야 한다 — 원본이 어떤 감사 흔적을 남기는지 모른 채 쓰면 안 된다"
+            "읽기·쓰기 관문 분리 — select() 는 그대로 두고 write(statements[]) 를 새로 팠다. INSERT/UPDATE 만 통과(DELETE·DDL 거부, 주석으로 가려도 검사), 넘긴 구문 전체가 한 트랜잭션(상태 변경과 이력 로그가 따로 커밋되면 이력 없는 티켓이 생긴다), ALLOW_DEV_WRITES 는 관문 안쪽에서도 한 번 더 확인(라우트가 잊어도 안 뚫린다)",
+            "상태 전이 정본 = mutations.ts 의 TRANSITIONS 표. 표에 없는 액션은 실행 자체가 안 된다(fail-closed). 되돌리는 전이는 일부러 없다 — 상태를 되돌리면 이력이 꼬인다",
+            "권한 판정은 mutations 가 하지 않는다. 라우트가 서버에서 티켓을 다시 읽어 canDo() 로 판정한 뒤 호출 — 판정과 실행을 한 함수에 섞으면 둘 중 하나를 빠뜨린다. 처리내역 저장은 액션 권한과 별개 축(canDo('save') 통과 시에만 반영)",
+            "이력 = NX_OPTREPORTR 로그행(IS_LOG_YN='Y', PPROGRESS=새 상태), 시드와 같은 형식. ⚠️ save 는 로그를 남기지 않는다(저장마다 쌓이면 이력 탭이 무의미) / suggestCancel 은 로그가 아니라 사람 댓글(시스템 기록은 접혀 있어 신청자가 못 본다)",
+            "🔴 저장 시점에도 sanitize() — 읽기에서만 거르면 저장된 마크업이 DB 에 남는다",
+            "신청 저장 POST /api/requests — 폼과 같은 zod 스키마. 서버가 고객사·신청자·운영시스템의 소속을 다시 조회해 확인한다(Combobox 목록은 편의일 뿐 권한 경계가 아니다). 고객사 사용자는 폼 값과 무관하게 본인 회사로 고정, 외부업체는 신청 자체 금지",
+            "접수번호 채번 = <접두>-<YYYYMM>-<일련3>. 접두 마스터 컬럼이 원본에도 없어 그 고객사의 마지막 번호에서 물려받는다",
+            "재신청은 전이가 아니라 새 신청 — 액션바의 '재신청'은 POST 가 아니라 /requests/new?from= 링크. 원본을 가시성 게이트 통과해 읽어 프리필(기존엔 '불러왔습니다' 문구만 있고 실제 프리필이 없었다)",
+            "액션 성공 후 상세 재조회 + router.refresh() — 초안을 버려 '방금 저장한 내용이 변경 있음으로 남아 두 번 저장'을 막는다",
+            "정본 문서: docs/decisions/ADR-0006"
+          ],
+          "verify": [
+            "npm run verify 106개 통과 (tests/writes.test.ts 17개 — 관문 fail-closed·전이·채번·새니타이즈·내부전용 강등)",
+            "브라우저 실측: 재신청 프리필 → 신청 저장 → HB-202608-015 생성 → 승인(1→2, APPROVER·CONFIRMDT·이력 2행) → 액션바가 승인/반려 → 취소로 갱신",
+            "댓글 저장 시 <script> 제거 확인 · 고객사가 adminOnly=true 로 보내도 내부전용이 되지 않음(fail-closed)"
           ]
         },
         {
@@ -522,6 +535,69 @@
           "detail": "GitHub public repo(dlzagu/nexio-next) + Vercel Git 연동(main push→프로덕션, PR→프리뷰). 라이브 https://nexio-next.vercel.app — 12개 경로 전수 200, 콘솔 에러 0. 배포 환경에서만 드러난 함정 3종 해결: ①Windows lock↔Linux npm ci(npm run lock:fix) ②isomorphic-dompurify→jsdom 서버리스 번들 누락으로 SSR 500(→xss 로 교체) ③벽시계 시각을 절대시각화해 서버/브라우저 날짜 하루 차이(→toWallClockIso, 회귀 테스트 4개). 정본 = docs/decisions/ADR-0005."
         }
       ]
+    },
+    {
+      "id": "P8",
+      "name": "원본 메뉴 이식 — 업무 현황 보드 · 공지사항 · 알림센터",
+      "status": "done",
+      "depends_on": [
+        "P6"
+      ],
+      "description": "원본 포털 전체 메뉴 분석(외부 문서)을 받아 이식 가치가 있는 것만 골라 옮겼다. 선정·제외 근거 정본 = docs/decisions/ADR-0007.",
+      "steps": [
+        {
+          "id": "s1",
+          "name": "업무 현황 보드(칸반) — 원본 STB01",
+          "status": "done",
+          "file": "src/components/board/BoardView.tsx",
+          "logic": [
+            "조회 화면과 같은 데이터의 다른 시점 — 조회='이 건이 어디까지 왔나', 보드='지금 무엇이 어디에 쌓였나'",
+            "컬럼 = 주 경로 4 + 완료 1 상시, 테스트 단계(5·6)는 카드가 있을 때만. 7·8·10 은 실측 0건이라 만들지 않는다",
+            "🔴 완료 컬럼은 완료일(SUCCDATE) 기준 최근 30일 — 목록 필터의 기간은 신청일 기준이라 '오래전 신청·어제 완료' 건이 통째로 빠진다(listRecentlyDone 신설)",
+            "카드 이동 = lib/board.ts 의 MOVES 표 → 액션 라우트 재사용. 표에 없는 이동은 드롭 자체가 안 되고(preventDefault 안 함), 실행은 서버가 canDo() 로 재판정",
+            "♿ 드래그 전용이면 키보드로 못 옮긴다 → 카드마다 '다음 단계' 버튼 병행",
+            "상세는 조회 화면의 DetailSheet 를 그대로 재사용 — 두 벌로 만들면 반드시 어긋난다",
+            "원본의 낙관적 락(updDt)은 갱신일시 컬럼이 없어 미이식. '서버 재판정'이 그 자리를 대신한다(남이 먼저 옮겼으면 403)"
+          ],
+          "verify": [
+            "브라우저 실측: '신청' 컬럼 카드의 다음 단계 버튼 → DT-202608-003 이 2→3, 미배정이던 담당자가 본인으로 배정, 이력 로그 기록, Notice '접수 처리했습니다'"
+          ]
+        },
+        {
+          "id": "s2",
+          "name": "공지사항 목록·상세 — 대시보드 위젯의 막다른 길 해소",
+          "status": "done",
+          "file": "src/app/notices/page.tsx",
+          "logic": [
+            "BOARD_DETAIL 테이블·시드가 이미 있었는데 열어볼 화면이 없었다 — 대시보드 공지 위젯이 클릭 불가였다",
+            "본문 컬럼(NTT_CN) 추가 + 시드 말뭉치에 본문 6건 작성. 목록은 제목만이 아니라 본문 미리보기 한 줄을 함께 보여 클릭 전에 거르게 한다",
+            "상세에 앞뒤 글(최신/이전) — 목록으로 나갔다 다시 들어오는 왕복 제거",
+            "🔴 스키마 버전(SCHEMA_VERSION) 도입 — 로컬 .data/nexio.db 는 파일로 남아 컬럼을 추가해도 옛 DB 가 열려 'no such column' 으로 죽는다. 버전이 다르면 통째로 재생성(전부 가상 시드라 잃을 게 없다). ⚠️ 개발 서버가 커넥션을 전역 캐시하므로 스키마 변경 후엔 서버 재시작이 필요하다"
+          ],
+          "verify": [
+            "/notices 6건 · 미리보기 렌더 · /notices/1 200 · 앞뒤 글 링크 표시"
+          ]
+        },
+        {
+          "id": "s3",
+          "name": "알림센터 — 재설계 §3 '알림1+클릭1' 의 마지막 조각",
+          "status": "done",
+          "file": "src/lib/data/notifications.ts",
+          "logic": [
+            "담당자의 '취소 권유'를 신청자가 받을 통로가 목록의 작은 뱃지뿐이었다 — 권유 댓글을 만들어 놓고 전달 경로가 없던 상태",
+            "🔴 새 테이블을 만들지 않는다. 읽음선(NX_OPTREPORT_READ_STATE)에서 파생 — '내 건에 달린, 내가 아직 안 본 글'이 곧 알림. 알림 테이블을 따로 두면 실제 댓글과 반드시 어긋난다",
+            "요청 단위로 묶는다(GROUP BY PECHONUM + MAX(ID)) — 낱개 글로 뿌리면 한 요청의 상태 로그 3건이 세 줄로 뜬다",
+            "최근 30일만 — 읽음선만으로 자르면 몇 달 전 종료건의 로그까지 알림이 된다(실측: 23건 중 22건이 2~7개월 전). 지난 일은 알림이 아니라 이력이고, 목록 뱃지에는 그대로 남는다",
+            "🔴 열어야 건수를 아는 알림은 알림이 아니다 → 마운트 시 1회 조회해 배지를 먼저 띄운다(폴링은 안 한다)",
+            "내부 전용 댓글은 고객사 알림으로도 새지 않는다 — 조회와 같은 가드",
+            "읽음 처리(모두 읽음)는 쓰기 경로 경유 → ALLOW_DEV_WRITES 꺼져 있으면 202 안내"
+          ],
+          "verify": [
+            "브라우저 실측(고객사 페르소나): 배지 1건 → 드롭다운 '확인할 요청 1건' → 모두 읽음 → 0건 + 목록 미읽음 뱃지도 함께 해소",
+            "tests/ported-menus.test.ts 14개 — 내 글은 내 알림이 아님·내부전용 차단·읽음선 일치·30일 밖 뱃지 보존·요청 단위 묶음·보드 이동 규칙·완료일 기준 컷·D-day 순수성"
+          ]
+        }
+      ]
     }
   ],
   "non_goals": [
@@ -544,8 +620,8 @@
     "canApproveRequest 를 서버가 어떤 규칙으로 계산하는지 — BFF 가 그대로 전달만 하면 되는지"
   ],
   "session_continuation": {
-    "next_step": "P6.s4",
-    "note": "✅ 공개 배포·CI/CD 완료(P7 done — ADR-0005). 라이브 https://nexio-next.vercel.app · CI green(verify 75개 + format + build) · Vercel Git 연동으로 push 마다 자동 배포. 브랜치: 공개 main / 익명화 전 이력은 로컬 private-history (⛔ push 금지). 남은 것: ① P6.s4 쓰기 경로(자체 DB UPDATE + 이력 로그) ② P6.s5 Tiptap ③ P1.s7. ⚠️ 의존성 변경 후엔 npm run lock:fix 를 돌려야 CI 가 통과한다. 검증: npm run verify(75개) · npm run build · /api/diag.",
+    "next_step": "P6.s5",
+    "note": "✅ 쓰기 경로 완료(P6.s4 — ADR-0006) + 원본 메뉴 3종 이식 완료(P8 — ADR-0007: 업무 현황 보드 /board · 공지사항 /notices · 상단 알림센터). 화면 3 → 6 + 알림, 새 의존성 0개, 새 테이블 0개(공지 본문 컬럼 1개만). 남은 것: ① P6.s5 Tiptap 편집기 ② P1.s7 ③ 배포 반영(라이브에 아직 안 올라감). ⚠️ 쓰기는 여전히 기본 차단 — 로컬에서 켜려면 .env.local 에 ALLOW_DEV_WRITES=true (또는 .claude/launch.json 의 'nexio-next-write' 구성으로 실행). ⚠️ 시드 스키마를 바꾸면 SCHEMA_VERSION 을 올리고 개발 서버를 재시작해야 한다(커넥션이 전역 캐시된다). ⚠️ 의존성 변경 후엔 npm run lock:fix. 검증: npm run verify(106개) · npm run build · /api/diag.",
     "compact_after_each_step": true
   }
 }

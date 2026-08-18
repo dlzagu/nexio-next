@@ -25,6 +25,9 @@ npm run format      # prettier (코드만 — 문서·docs/ 는 대상 아님)
 npm run build       # 프로덕션 빌드 (CI 가 push/PR 마다 실행)
 ```
 
+쓰기(신청 저장·액션·댓글)를 켜려면 `.env.local` 에 `ALLOW_DEV_WRITES=true`.
+기본은 꺼짐이고, 꺼져 있으면 화면이 권한 판정까지만 하고 202 로 "여기까지 통과"를 알려준다.
+
 작업 완료 = **`npm run verify` 통과 후 보고.** "된 것 같다"는 완료가 아니다.
 
 ## 시작하기 — 세션 진입 시 반드시
@@ -41,8 +44,10 @@ DB 교체 시 수정 대상은 `src/lib/db.ts` 하나다. 쓰기는 `ALLOW_DEV_W
 
 | 위치 | 역할 |
 |---|---|
-| `src/app/` | App Router — 페이지(대시보드·조회·신청·스타일가이드) |
+| `src/app/` | App Router — 페이지(대시보드·조회·신청·업무현황·공지·스타일가이드) |
 | `src/app/api/` | route handler (`.claude/rules/bff.md` 가 자동 로드됨) |
+| `src/lib/data/mutations.ts` | 🔴 쓰기 정본 — 상태 전이표·이력 규약. 권한 판정은 여기가 아니라 라우트에서 |
+| `src/lib/board.ts` | 칸반 컬럼·이동 규칙 (`canDo()` 재사용) |
 | `src/app/globals.css` | LAYER 2 — 컴포넌트 클래스. 수치는 전부 `var(--*)` 참조 |
 | `src/app/tokens.css` | 토큰 **복사본**. 정본은 `docs/design/tokens.css` — 손대지 않는다 |
 | `src/components/ui/` | 프리미티브 (Radix + 토큰). ADR-0003 |
@@ -65,6 +70,14 @@ DB 교체 시 수정 대상은 `src/lib/db.ts` 하나다. 쓰기는 `ALLOW_DEV_W
 | 대시보드 | `views/ndashboard.jsp` | 3,104줄 · GET 14 | 읽기 전용, 난이도 최저 |
 | 조회 | `c4web/ST001.jsp` | 6,611줄 · 상태 12 · 버튼 25 | **최난도, 프로젝트의 핵심 목표** |
 | 신청 | `c4web/ST002.jsp` | 2,599줄 · 입력 20 | 가장 가벼움 |
+
+**이식 3종** (ADR-0007 — 선정·제외 근거가 거기 있다)
+
+| 화면 | 원본 | 왜 |
+|---|---|---|
+| 업무 현황 `/board` | 칸반 보드(STB01) | 조회와 같은 데이터의 다른 시점. 카드 이동이 액션 라우트를 그대로 쓴다 |
+| 공지사항 `/notices` | 상단 상시 메뉴 | 시드·테이블은 있는데 열어볼 화면이 없어 대시보드 위젯이 막다른 길이었다 |
+| 알림센터 (상단 종) | `/api/notifications` | 담당자의 '취소 권유'가 신청자에게 닿는 통로. 새 테이블 없이 읽음선에서 파생 |
 
 ## 컨벤션 (HOW)
 
@@ -93,6 +106,14 @@ DB 교체 시 수정 대상은 `src/lib/db.ts` 하나다. 쓰기는 `ALLOW_DEV_W
 | 의존성 추가·제거 후 lock 을 그대로 커밋 | 훅이 자동 보정한 lock 을 **커밋에 포함**한다 (수동은 `npm run lock:fix`) | Windows npm 이 wasm32-wasi optional 하위 의존성(`@emnapi/*`)을 lock 에 안 적어 Linux CI 의 `npm ci` 가 멈춘다. `npm install` 이 매번 다시 지우므로 PostToolUse 훅(`sync-lock-after-npm.sh`)이 npm 명령 직후 되살린다 |
 | 서버에서 도는 코드에 DOM 의존 라이브러리(DOMPurify+jsdom 등) | DOM 없는 순수 파서 (`xss`) | jsdom 의 동적 require 가 서버리스 번들에 안 담겨 SSR 이 통째로 500. 클라이언트 컴포넌트의 SSR 번들이라 `serverExternalPackages` 로도 못 뺀다 |
 | 저장된 날짜를 `toISOString()` 으로 절대시각화 | `toWallClockIso()` — 타임존 표기 없이 | 저장값이 타임존 없는 벽시계라, 서버(UTC)와 브라우저(KST)가 하루 다른 날짜를 그려 하이드레이션이 깨진다 (React #418) |
+| 쓰기를 위해 `select()` 의 구문 검사를 넓힌다 | `write()` 로 따로 들어간다 | 관문이 하나면 언젠가 "조회인 줄 알았는데 쓰는" 코드가 생긴다. `write()` 는 INSERT/UPDATE 만·한 트랜잭션·플래그를 안쪽에서 재확인 (`ADR-0006`) |
+| 상태 변경과 이력 로그를 각각 커밋 | 한 `write()` 호출에 함께 넘긴다 | 중간에 실패하면 **이력 없는 티켓**이 남는다. 어디서 온 상태인지 영원히 모른다 |
+| 저장은 그냥 하고 렌더할 때만 새니타이즈 | 저장 시점에도 `sanitize()` | 읽기 경로가 하나라도 새면 그때 터진다. 저장된 마크업은 지우기 전까지 계속 남는다 |
+| 알림을 위해 알림 테이블을 새로 만든다 | 읽음선(`READ_STATE`)에서 파생한다 | 두 곳을 각각 갱신해야 하므로 반드시 어긋난다. 뱃지와 알림이 다른 숫자를 말하기 시작한다 |
+| '최근 완료'를 신청일(`REQDATE`) 기준으로 자른다 | 완료일(`SUCCDATE`) 기준 (`listRecentlyDone`) | 오래전에 신청돼 어제 끝난 건이 통째로 빠진다. 목록 필터의 기간은 신청일 기준이라 그대로 쓰면 안 된다 |
+| 쓰기 응답의 성공을 `res.ok` 로 판정 | `res.status === 200` 으로 좁힌다 | 쓰기 비활성(기본값)이 **202** 를 주는데 `res.ok` 에 포함된다. 저장 안 됐는데 성공으로 알고 사용자가 쓰던 초안을 지운다 |
+| 내부 전용 댓글을 쓰기·읽기에서 다른 기준으로 거른다 | 두 축을 `INTERNAL` 하나로 맞춘다 | 축이 어긋나면 "썼는데 본인에게도 안 보이는 댓글"이 생긴다. 판정은 `insertComment` 안쪽에 둬 호출자가 잊을 수 없게 한다 |
+| 시드 스키마 컬럼만 추가하고 끝 | `SCHEMA_VERSION` 을 올린다 | 로컬 `.data/nexio.db` 는 파일로 남아 옛 스키마가 그대로 열린다 → `no such column` 500. ⚠️ 개발 서버는 커넥션을 전역 캐시하므로 **재시작**해야 재생성이 돈다 |
 
 ## 참고 문서 (필요할 때만 로드)
 
@@ -100,6 +121,9 @@ DB 교체 시 수정 대상은 `src/lib/db.ts` 하나다. 쓰기는 `ALLOW_DEV_W
 - **전환 결정**: `docs/decisions/ADR-0004`(사이드 프로젝트·SQLite·가상 시드) ← 현행 정본
 - **배포·CI/CD**: `docs/decisions/ADR-0005` — 라이브 https://nexio-next.vercel.app ·
   배포 환경에서만 드러난 함정 3종(lock·jsdom·타임존)의 원인과 대응
+- **쓰기 경로**: `docs/decisions/ADR-0006` — 관문 분리 · 상태 전이 정본 · 이력 규약
+- **메뉴 이식**: `docs/decisions/ADR-0007` — 원본 38메뉴(서비스 6 + 내부관리 27 + 상단 상시 5)
+  중 3종을 고른 기준과 버린 근거
 - 요구사항: `docs/PRD.md` · 구조·환경변수: `docs/ARCHITECTURE.md`
 - API 계약: `docs/inventory/api-map.md` · 타입: `docs/design/types-spec.md`
 - 실데이터 근거: `docs/inventory/data-profile.md` ← "무엇을 안 만들어도 되는가"의 출처
