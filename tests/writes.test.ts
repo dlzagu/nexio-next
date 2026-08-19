@@ -156,7 +156,7 @@ describe("쓰기 관문 — fail-closed", () => {
 });
 
 describe("상태 전이 + 이력 로그", () => {
-  it("접수(2→3) — 미배정 건은 접수한 사람이 담당자가 된다", async () => {
+  it("접수(2→3) — 접수는 인계다. 접수한 사람이 담당자가 된다", async () => {
     const t = await pick("2");
     const before = (await logRows(t.echoNum)).length;
 
@@ -164,7 +164,7 @@ describe("상태 전이 + 이력 로그", () => {
 
     const after = await getTicket(t.echoNum, internal);
     expect(after?.progress).toBe("3");
-    expect(after?.assigneeId).toBe(t.assigneeId ?? internal.id);
+    expect(after?.assigneeId).toBe(internal.id);
 
     const logs = await logRows(t.echoNum);
     expect(logs.length).toBe(before + 1);
@@ -533,6 +533,29 @@ describe("공유 DB — 붙으면 배포에서도 열린다", () => {
       if (prev.TURSO_DATABASE_URL === undefined)
         delete process.env.TURSO_DATABASE_URL;
     }
+  });
+});
+
+describe("접수 — 인계", () => {
+  it("남에게 배정된 건을 접수하면 담당이 넘어오고, **누구에게서 왔는지** 이력에 남는다", async () => {
+    const rows = await select<{ ECHONUM: string }>(
+      `SELECT ECHONUM FROM NX_OPTREPORTD
+        WHERE PROGRESS='2' AND COALESCE(SUCCERSON,'') NOT IN ('', @me)
+        LIMIT 1`,
+      [{ name: "me", value: internal.id }],
+    );
+    const t = (await getTicket(rows[0].ECHONUM, internal))!;
+    const 원래담당 = t.assigneeName ?? t.assigneeId;
+    expect(원래담당).toBeTruthy();
+
+    await applyAction({ ticket: t, user: internal, action: "receive" });
+
+    const after = await getTicket(t.echoNum, internal);
+    expect(after?.assigneeId).toBe(internal.id);
+    // 조용히 바뀌면 원래 담당자는 자기 건이 사라진 것으로만 안다
+    const log = (await logRows(t.echoNum)).at(-1);
+    expect(log?.COMMENT).toContain("인계");
+    expect(log?.COMMENT).toContain(원래담당!);
   });
 });
 

@@ -267,11 +267,24 @@ export async function applyAction(opts: {
   const statements: WriteStatement[] = [];
   const patch: Patch = {};
 
+  /** 접수하며 담당을 가져온 상대 — 이력 문구에 쓴다 */
+  let handedOverFrom: string | null = null;
+
   if (rule.to) {
     patch.PROGRESS = rule.to;
     Object.assign(patch, rule.stamp?.(user, now) ?? {});
-    // 미배정 건을 접수하면 접수한 사람이 담당자가 된다. 이미 배정돼 있으면 건드리지 않는다.
-    if (action === "receive" && !ticket.assigneeId) patch.SUCCERSON = user.id;
+    /**
+     * 접수 = **인계**다. 접수한 사람이 담당자가 된다.
+     *
+     * 미배정만 가져가고 배정된 건은 두면, 남의 건을 접수한 사람이 그다음 단계에서
+     * 막힌다(save·propose·complete 가 '담당자만'이라서). 그래서 항상 가져온다.
+     * 🔴 남의 배정을 옮기는 일이므로 **누구에게서 가져왔는지 이력에 남긴다** —
+     *    조용히 바뀌면 원래 담당자는 자기 건이 사라진 것으로만 안다.
+     */
+    if (action === "receive" && ticket.assigneeId !== user.id) {
+      patch.SUCCERSON = user.id;
+      handedOverFrom = ticket.assigneeName ?? ticket.assigneeId;
+    }
   }
 
   /**
@@ -320,9 +333,14 @@ export async function applyAction(opts: {
       insertComment({
         echoNum: ticket.echoNum,
         author: user,
-        body: triaged.length
-          ? `${rule.log} (${triaged.join(" · ")})`
-          : rule.log,
+        body: [
+          handedOverFrom
+            ? `${rule.log} (${handedOverFrom} → ${user.name} 인계)`
+            : rule.log,
+          triaged.length ? `(${triaged.join(" · ")})` : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
         adminOnly: false,
         isLog: true,
         progress: rule.to ?? ticket.progress,

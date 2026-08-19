@@ -308,10 +308,8 @@ describe("업무 현황 보드", () => {
 
   it("드롭 판정이 canDo() 정본을 따른다 — 고객사 사용자는 접수할 수 없다", async () => {
     const { rows } = await listTickets(filters({ progress: "2" }), internal);
-    // 접수도 담당자 규칙을 따른다 — 미배정이거나 내게 배정된 건이어야 한다
-    const row = rows.find(
-      (r) => !r.assigneeId || r.assigneeId === internal.id,
-    )!;
+    // 접수는 인계라 배정 여부와 무관하다 — 처리자면 누구나 끌어올 수 있다
+    const row = rows[0];
     expect(row).toBeDefined();
 
     // 처리자 측: 접수 가능

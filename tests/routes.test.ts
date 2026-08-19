@@ -91,12 +91,9 @@ beforeAll(async () => {
   moonTerminal = await pickTicket(
     "CUSTCODE='SJ001' AND CUSTPERSON='sj.moon' AND PROGRESS='9'",
   );
-  // 접수는 **담당자 규칙**을 따른다 — 남에게 배정된 건은 접수 자체가 막힌다.
+  // 접수는 인계라 배정 여부와 무관하게 가능하다.
   // (HB001 은 제외: 타사 운영시스템 거부를 확인하는 테스트가 그 고객사를 쓴다)
-  receivable = await pickTickets(
-    "PROGRESS='2' AND CUSTCODE<>'HB001' AND (COALESCE(SUCCERSON,'')='' OR SUCCERSON='sy.kim')",
-    3,
-  );
+  receivable = await pickTickets("PROGRESS='2' AND CUSTCODE<>'HB001'", 3);
 
   const f = await select<{ ID: number; PECHONUM: string }>(
     `SELECT f.ID, f.PECHONUM FROM NX_OPTREPORT_FILE f
@@ -218,11 +215,10 @@ describe("접수 → 해결안 제시 (실제 흐름)", () => {
    */
   it("접수하면 담당자가 되고, 그 자리에서 '해결안 제시'가 보인다", async () => {
     as("sy.kim");
+    // 남에게 배정된 건이어도 접수하면 내가 담당자가 된다 (인계)
     const echoNum = (
       await pickTickets(
-        "PROGRESS='2' AND COALESCE(SUCCERSON,'')='' AND ECHONUM NOT IN ('" +
-          receivable.join("','") +
-          "')",
+        "PROGRESS='2' AND ECHONUM NOT IN ('" + receivable.join("','") + "')",
       )
     )[0];
 
