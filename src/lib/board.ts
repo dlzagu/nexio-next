@@ -28,6 +28,14 @@ export const BOARD_COLUMNS: readonly BoardColumn[] = [
   { progress: "4", label: "해결안 제시" },
   { progress: "5", label: "테스트 요청", optional: true },
   { progress: "6", label: "테스트 완료", optional: true },
+  // 곁가지 — 신청자가 취소를 요청한 건. 카드가 있을 때만 뜬다(optional).
+  // 보드에서 안 보이면 담당자는 판단해야 할 건이 있다는 걸 모른다.
+  {
+    progress: "10",
+    label: "취소 요청",
+    optional: true,
+    hint: "판단 필요",
+  },
   { progress: "9", label: "완료", hint: "최근 30일" },
 ];
 
@@ -42,6 +50,9 @@ const MOVES: Record<string, TicketAction> = {
   "4>9": "complete",
   "5>6": "testComplete",
   "6>9": "complete",
+  // 취소요청의 두 갈래. 10→3 은 '되돌리기'가 아니라 **판단 결과**다
+  "10>11": "cancelApprove",
+  "10>3": "cancelDeny",
 };
 
 export function moveAction(from: string, to: string): TicketAction | undefined {

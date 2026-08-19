@@ -59,6 +59,25 @@ const TRANSITIONS: Partial<Record<TicketAction, Transition>> = {
     stamp: (u, now) => ({ CANCELREQER: u.id, CANCELREQDT: now }),
     log: "신청자가 취소를 요청했습니다.",
   },
+  /**
+   * 취소요청(10) 에서 나가는 두 갈래.
+   *
+   * 🔴 들어가는 길만 있고 나가는 길이 없으면 **아무도 손댈 수 없는 티켓**이 된다 —
+   *    상태 10 은 종료도 아니라 목록에 계속 남고, 화면은 "담당자에게 문의하라"고 하는데
+   *    담당자도 할 수 있는 게 없었다(실측). 신청자가 버튼 하나로 만들 수 있는 막다른 길이었다.
+   */
+  cancelApprove: {
+    to: "11",
+    stamp: (u, now) => ({ CANCELER: u.id, CANCELDT: now }),
+    reasonCol: "AMEMO",
+    log: "취소 요청이 승인되어 요청이 취소되었습니다.",
+  },
+  cancelDeny: {
+    // 취소하지 않고 진행으로 되돌린다 — 요청 전 상태(3)가 유일한 출발점이다
+    to: "3",
+    reasonCol: "AMEMO",
+    log: "취소 요청이 반려되어 처리를 계속합니다.",
+  },
   receive: {
     to: "3",
     log: "담당자가 배정되어 처리를 시작합니다.",

@@ -536,6 +536,60 @@ describe("공유 DB — 붙으면 배포에서도 열린다", () => {
   });
 });
 
+describe("취소 요청의 두 갈래", () => {
+  /** 신청자가 진행 중 건에 취소를 요청한 상태(10)를 만든다 */
+  async function requestedCancel() {
+    const t = await pick("3");
+    const requester = {
+      ...internal,
+      id: t.requesterId!,
+      role: "CUSTOMER" as const,
+      custCode: t.custCode,
+    };
+    await applyAction({ ticket: t, user: requester, action: "cancelRequest" });
+    return (await getTicket(t.echoNum, internal))!;
+  }
+
+  it("승인하면 취소로 종료되고 취소자·취소일이 남는다", async () => {
+    const t = await requestedCancel();
+    expect(t.progress).toBe("10");
+
+    await applyAction({
+      ticket: t,
+      user: internal,
+      action: "cancelApprove",
+      reason: "고객 요청으로 취소합니다.",
+    });
+
+    const after = await getTicket(t.echoNum, internal);
+    expect(after?.progress).toBe("11");
+    const row = await select<{ CANCELER: string; CANCELDT: string }>(
+      "SELECT CANCELER, CANCELDT FROM NX_OPTREPORTD WHERE ECHONUM = @e",
+      [{ name: "e", value: t.echoNum }],
+    );
+    expect(row[0].CANCELER).toBe(internal.id);
+    expect(row[0].CANCELDT).toBeTruthy();
+  });
+
+  it("반려하면 진행으로 돌아가고 이력에 남는다 — 요청이 사라지지 않는다", async () => {
+    const t = await requestedCancel();
+    const before = (await logRows(t.echoNum)).length;
+
+    await applyAction({
+      ticket: t,
+      user: internal,
+      action: "cancelDeny",
+      reason: "이미 작업이 시작되어 계속 진행합니다.",
+    });
+
+    const after = await getTicket(t.echoNum, internal);
+    expect(after?.progress).toBe("3");
+    const logs = await logRows(t.echoNum);
+    expect(logs.length).toBe(before + 1);
+    expect(logs.at(-1)?.COMMENT).toContain("계속");
+  });
+});
+
 describe("접수 — 인계", () => {
   it("남에게 배정된 건을 접수하면 담당이 넘어오고, **누구에게서 왔는지** 이력에 남는다", async () => {
     const rows = await select<{ ECHONUM: string }>(

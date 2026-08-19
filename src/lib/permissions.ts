@@ -56,6 +56,18 @@ export function canDo(
       if (!isCustomer || !isRequester) return false;
       return p === "3";
 
+    /* ── 취소요청(10) 의 출구 — 처리자 측이 판단한다 ───────── */
+
+    case "cancelApprove":
+    case "cancelDeny":
+      /**
+       * 🔴 이 두 개가 없으면 상태 10 이 **막다른 길**이 된다 (신청자도 담당자도 액션 0개).
+       *    취소요청은 신청자가 만들고, 받아들일지는 처리 중인 쪽이 판단한다.
+       *    아래 단계들과 같은 담당자 기준을 쓴다 — 10 은 진행(3)에서만 오므로 담당자가 있다.
+       */
+      if (p !== "10" || !isHandler) return false;
+      return ticket.assigneeId ? isAssignee : true;
+
     case "reapply":
       // 종료건 재신청 — 신청자 본인
       return terminal && isCustomer && isRequester;
@@ -136,6 +148,9 @@ const ACTION_ORDER: ActionSpec[] = [
   { action: "reapply", label: "재신청", variant: "primary" },
   { action: "save", label: "저장", variant: "outline" },
   { action: "suggestCancel", label: "취소 권유", variant: "outline" },
+  { action: "cancelApprove", label: "취소 승인", variant: "danger-soft" },
+  // '반려'가 아니라 결과로 말한다 — 승인 반려(reject)와 헷갈리지 않게
+  { action: "cancelDeny", label: "계속 진행", variant: "outline" },
   { action: "cancelRequest", label: "취소 요청", variant: "danger-soft" },
   { action: "cancel", label: "취소", variant: "danger-soft" },
   { action: "reject", label: "반려", variant: "danger-soft" },
@@ -207,6 +222,10 @@ export function cancelHint(
   }
   if (isTerminal(ticket.progress)) {
     return "이미 종료된 요청은 취소할 수 없습니다. 필요하면 재신청해 주세요.";
+  }
+  // 이미 요청을 보낸 상태 — "왜 버튼이 없지"가 아니라 "기다리는 중"이라고 말한다
+  if (ticket.progress === "10") {
+    return "취소 요청이 전달되었습니다. 담당자가 확인하면 취소되거나, 사유와 함께 처리가 계속됩니다.";
   }
   return "현재 단계에서는 취소할 수 없습니다. 담당자에게 문의해 주세요.";
 }

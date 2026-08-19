@@ -54,10 +54,24 @@ export function Stepper({
   const steps = flowSteps({ usesTestStage, usesSystemStage });
   const p = String(progress).trim();
   const terminatedEarly = p === "11" || p === "12";
-  const currentIdx = steps.findIndex((s) => s.code === p);
+  /**
+   * 취소요청(10)은 주 경로에 없다. 그대로 두면 어느 단계에도 안 맞아
+   * **첫 단계가 현재인 것처럼** 그려진다(대기로 보인다). 진행(3)에서 갈라져 나온
+   * 곁가지이므로 자리는 진행에 두고, 갈라졌다는 사실을 앞에 붙인다.
+   */
+  const cancelPending = p === "10";
+  const currentIdx = steps.findIndex(
+    (s) => s.code === (cancelPending ? "3" : p),
+  );
 
   return (
     <div className={cn("stp", className)} role="list" aria-label="진행 단계">
+      {cancelPending ? (
+        <div className="stp-i" data-state="cancelled" role="listitem">
+          <span className="stp-n">?</span>
+          <span className="stp-l">취소 요청됨</span>
+        </div>
+      ) : null}
       {terminatedEarly ? (
         <div className="stp-i" data-state="cancelled" role="listitem">
           <span className="stp-n">{p === "11" ? "—" : "✕"}</span>

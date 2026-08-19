@@ -150,6 +150,8 @@ export type TicketAction =
   | "reject" // 반려
   | "cancel" // 취소 — 🔒 신청자 본인만
   | "cancelRequest" // 취소요청 — 신청자만
+  | "cancelApprove" // 취소요청 승인 (취소요청 → 취소) — 처리자 측
+  | "cancelDeny" // 취소요청 반려, 처리를 계속한다 (취소요청 → 진행) — 처리자 측
   | "suggestCancel" // 취소 권유 — 담당자가 보내고, 실행은 신청자가
   | "receive" // 접수 (신청 → 진행)
   | "save" // 처리내역 저장
