@@ -45,16 +45,23 @@ export function SidebarBody({
 
   return (
     <>
-      <div className="border-line-subtle flex h-[52px] items-center gap-2.5 border-b px-4">
-        <span
-          aria-hidden
-          className="bg-accent text-11 text-fg-on-solid flex h-6 w-6 items-center justify-center rounded-md font-bold"
+      {/* 로고는 홈으로 가는 문이다 — 어느 화면에서 헤매도 여기를 누르면 처음으로 돌아온다 */}
+      <div className="border-line-subtle flex h-[52px] items-center border-b px-4">
+        <Link
+          href="/dashboard"
+          onClick={onNavigate}
+          className="hover:bg-hover -mx-1.5 flex items-center gap-2.5 rounded-md px-1.5 py-1"
         >
-          N
-        </span>
-        <span className="text-14 text-fg-strong font-semibold tracking-tight">
-          넥시오
-        </span>
+          <span
+            aria-hidden
+            className="bg-accent text-11 text-fg-on-solid flex h-6 w-6 items-center justify-center rounded-md font-bold"
+          >
+            N
+          </span>
+          <span className="text-14 text-fg-strong font-semibold tracking-tight">
+            넥시오
+          </span>
+        </Link>
       </div>
 
       <nav className="flex flex-col gap-0.5 p-2" aria-label="주 메뉴">
