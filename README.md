@@ -14,7 +14,7 @@
 |---|---|
 | **규모** | 화면 8개 + 알림센터 · TypeScript 12,100줄(+테스트 2,200줄) · 설계 기록(ADR) 10건 |
 | **스택** | Next.js 16(App Router) · React 19 · TypeScript strict · Tailwind 4 + 자체 토큰 · Radix UI · SQLite/libSQL · Vitest · GitHub Actions · Vercel |
-| **검증** | 테스트 162개 · lint → typecheck → test → build → 런타임 스모크 자동 실행 |
+| **검증** | 테스트 162개 · lint → typecheck → test → build → 런타임 스모크 → 반응형 검사 자동 실행 |
 | **측정** | Lighthouse 접근성·권장사항·SEO **전 화면 100** · 데스크톱 성능 97~99 |
 
 ![대시보드](docs/screenshots/01-dashboard.png)
@@ -178,7 +178,8 @@ SQLite 호환 저장소
 ## 검증 · 배포
 
 - **CI** (GitHub Actions): push/PR 마다 `verify`(lint·typecheck·테스트 162개) → `format:check` →
-  `build` → **런타임 스모크**(앱을 실제로 띄워 주요 경로 11개와 `/api/diag` 확인)
+  `build` → **런타임 스모크**(주요 경로 11개와 `/api/diag`) → **반응형 검사**(390·768·1440 으로
+  실제로 띄워 가로 넘침 0 과 골격 전환을 확인)
 - **CD** (Vercel Git 연동): `main` push → 프로덕션 배포, PR → 프리뷰 URL 자동 발급
 - 테스트는 개수보다 **무엇을 고정하는가**가 기준입니다 — 권한 fail-closed, 데이터 위생(디코드·
   새니타이즈 순서), 쓰기 트랜잭션 원자성, 시드 불변식

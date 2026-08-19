@@ -34,3 +34,15 @@ jobs:
       # 한 번 띄워 200 을 받아 보는 것이 유일한 방벽이다 (scripts/smoke.mjs)
       - name: 런타임 스모크 (앱을 실제로 띄운다)
         run: npm run smoke
+
+      # 좁은 화면이 깨진 것을 사람이 브라우저를 열어서야 찾았다. 화면이 하나 늘 때마다
+      # 사람이 다시 재야 한다면 언젠가 아무도 재지 않는다 (scripts/responsive.mjs).
+      # ⚠️ 브라우저는 **저장소 의존성이 아니다** — 여기서만 받는다. package.json 에 넣으면
+      #    모든 개발자의 npm install 이 매번 100MB 를 끌고 온다.
+      - name: 반응형 검사용 브라우저 준비
+        run: |
+          npm i --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+
+      - name: 반응형 검사 (390 · 768 · 1440)
+        run: npm run responsive
