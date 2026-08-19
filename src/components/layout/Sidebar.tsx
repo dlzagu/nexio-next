@@ -65,7 +65,10 @@ export function SidebarBody({
         </Link>
       </div>
 
-      <nav className="flex flex-col gap-0.5 p-2" aria-label="주 메뉴">
+      <nav
+        className="scroll-y flex min-h-0 flex-col gap-0.5 p-2"
+        aria-label="주 메뉴"
+      >
         {[...NAV, ...(user.role === "INTERNAL" ? INTERNAL_NAV : [])].map(
           ({ href, label, icon: Icon }) => {
             const active =
@@ -127,6 +130,10 @@ export function SidebarBody({
  * 데스크톱 사이드바. 좁은 화면에서는 **감춘다** — 216px 를 고정으로 차지하면
  * 375px 화면에서 본문이 159px 만 남아 아무것도 읽을 수 없다(실측).
  * 그 폭에서는 상단바의 메뉴 버튼이 같은 내용을 서랍으로 연다.
+ *
+ * 🔴 화면 높이에 **고정**한다(sticky + h-dvh). 그냥 두면 flex 가 본문 높이만큼
+ *    늘려 버려서, 대시보드처럼 긴 화면에서는 하단(디자인 시스템·사용자)이
+ *    **페이지 맨 아래**로 내려간다 — 스크롤을 끝까지 내려야 보인다.
  */
 export function Sidebar({
   user,
@@ -137,7 +144,7 @@ export function Sidebar({
 }) {
   return (
     <aside
-      className="border-line bg-surface hidden shrink-0 flex-col border-r md:flex"
+      className="border-line bg-surface sticky top-0 hidden h-dvh shrink-0 flex-col border-r md:flex"
       style={{ width: "var(--sidebar-w)" }}
     >
       <SidebarBody user={user} openCount={openCount} />
