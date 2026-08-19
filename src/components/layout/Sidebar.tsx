@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   ListChecks,
   Megaphone,
+  Palette,
 } from "lucide-react";
 import { USER_ROLE_LABEL } from "@/lib/codes";
 import type { User } from "@/lib/types";
@@ -92,7 +93,25 @@ export function SidebarBody({
         )}
       </nav>
 
-      <div className="border-line-subtle mt-auto border-t p-2">
+      <div className="border-line-subtle mt-auto flex flex-col gap-2 border-t p-2">
+        {/*
+         * 서비스데스크의 메뉴가 아니라 **데모를 보는 사람**을 위한 문이다 —
+         * 실제 벤더포털에 '디자인 시스템' 메뉴가 있으면 현실감이 깨지므로
+         * 주 메뉴에서 떼어 아래에 둔다 (상단바의 '역할 전환'과 같은 성격).
+         * 그렇다고 URL 을 아는 사람만 보게 두면, 이 프로젝트에서 가장 공들인 것을
+         * 아무도 못 본다.
+         */}
+        <Link
+          href="/styleguide"
+          className="nav-i"
+          data-active={pathname.startsWith("/styleguide")}
+          onClick={onNavigate}
+        >
+          <Palette size={15} aria-hidden />
+          <span className="flex-1">디자인 시스템</span>
+          <span className="badge badge-neutral">데모</span>
+        </Link>
+
         <div className="bg-subtle rounded-md px-2.5 py-2">
           <p className="ell text-12 text-fg-strong font-medium">{user.name}</p>
           <p className="ell text-11 text-fg-subtle mt-0.5">

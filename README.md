@@ -44,7 +44,7 @@
 <td colspan="2"><a href="docs/screenshots/06-dashboard-dark.png"><img src="docs/screenshots/06-dashboard-dark.png" alt="다크 모드"></a></td>
 </tr>
 <tr>
-<td colspan="2"><b>다크 모드 · 밀도 전환</b> — 토큰 168개로 직접 만든 디자인 시스템(<code>/styleguide</code>). 색만으로 상태를 구분하지 않는다 — 상태군마다 글리프가 다르다</td>
+<td colspan="2"><b>다크 모드 · 밀도 전환</b> — 토큰 168개로 직접 만든 <a href="https://nexio-next.vercel.app/styleguide">디자인 시스템</a>. 색만으로 상태를 구분하지 않는다 — 상태군마다 글리프가 다르다</td>
 </tr>
 </table>
 
@@ -82,7 +82,8 @@
 
 컴포넌트 라이브러리를 가져다 쓰지 않고 **토큰 168개 · UI 프리미티브 11종 · 컴포넌트 클래스
 53개**로 구성했습니다. 다크/라이트/시스템 테마와 밀도 전환을 지원하고, 살아 있는 스타일가이드
-페이지(`/styleguide`)에서 토큰과 컴포넌트를 한눈에 봅니다.
+페이지([라이브에서 바로 열기](https://nexio-next.vercel.app/styleguide))에서 토큰과 컴포넌트를 한눈에 봅니다.
+사이드바 맨 아래 **디자인 시스템** 으로도 들어갈 수 있습니다.
 
 접근성 규칙을 시스템 차원에서 강제합니다 — 상태를 **색만으로 구분하지 않고**(상태군마다 글리프가
 다르다), 드래그가 필요한 곳에는 키보드 대안을 함께 둡니다.
