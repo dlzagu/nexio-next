@@ -83,6 +83,34 @@ beforeAll(async () => {
 });
 
 describe("시드 불변식 (원본 실측 프로파일 재현)", () => {
+  it("🔴 대기(1) 는 승인 단계를 쓰는 고객사에만 있다 — 아니면 아무도 진행시킬 수 없다", async () => {
+    // 승인은 canDo 가 막고(설정을 모르면 차단), 접수는 상태 2 에서만 된다 →
+    // CONFYN='N' 고객사의 대기 건은 취소 말고는 길이 없는 **갇힌 티켓**이 된다
+    const stuck = await select<{ n: number }>(
+      `SELECT COUNT(*) AS n
+         FROM NX_OPTREPORTD d JOIN COMPANY_MST c ON c.COMPANY_CODE = d.CUSTCODE
+        WHERE d.PROGRESS = '1' AND COALESCE(c.CONFYN,'N') <> 'Y'`,
+    );
+    expect(Number(stuck[0].n)).toBe(0);
+  });
+
+  it("접수 전(1·2)에는 담당자가 대부분 없다 — 접수하면서 정해진다", async () => {
+    const rows = await select<{ assigned: number; total: number }>(
+      `SELECT SUM(CASE WHEN COALESCE(SUCCERSON,'') <> '' THEN 1 ELSE 0 END) AS assigned,
+              COUNT(*) AS total
+         FROM NX_OPTREPORTD WHERE PROGRESS = '2'`,
+    );
+    const { assigned, total } = rows[0];
+    expect(Number(total)).toBeGreaterThan(0);
+    // 미리 배정돼 있는 경우가 없지는 않지만 소수여야 한다
+    expect(Number(assigned) / Number(total)).toBeLessThan(0.4);
+    // 대기(1) 는 아직 우리 손에 오기 전이라 담당자가 없다
+    const waiting = await select<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM NX_OPTREPORTD WHERE PROGRESS='1' AND COALESCE(SUCCERSON,'') <> ''",
+    );
+    expect(Number(waiting[0].n)).toBe(0);
+  });
+
   it("상태 7(이관요청)·8(이관승인)·10(취소요청)은 0건이다 — 실측상 미사용 워크플로", async () => {
     const rows = await select<{ PROGRESS: string; n: number }>(
       "SELECT PROGRESS, COUNT(*) AS n FROM NX_OPTREPORTD GROUP BY PROGRESS",

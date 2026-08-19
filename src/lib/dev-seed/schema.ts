@@ -11,7 +11,7 @@
  * 컬럼을 추가해도 이전 DB 가 그대로 열려 "없는 컬럼" 오류가 난다 →
  * 버전이 다르면 ensureSeed 가 통째로 다시 만든다 (데모 DB 라 잃을 게 없다).
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const SCHEMA_SQL = `
 CREATE TABLE NX_SCHEMA (VERSION INTEGER NOT NULL);

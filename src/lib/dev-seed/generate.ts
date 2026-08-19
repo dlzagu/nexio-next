@@ -386,8 +386,13 @@ function seed(db: DB): void {
     if (chance(0.2)) t.REFMAIL = `pm@${company.domain}.example`;
     t.EXPETIME = int(1, 8);
 
+    /**
+     * 접수 전(1·2)에는 담당자가 없는 것이 정상이다 — 현업은 담당자를 지정하지 않고
+     * 신청하고, 우리 쪽에서 **접수하면서** 담당이 정해진다(접수=인계, mutations.ts).
+     * 미리 배정돼 있는 경우가 아주 없지는 않아 20% 만 남긴다.
+     */
     const assignee =
-      progress === "1" || (progress === "2" && chance(0.3))
+      progress === "1" || (progress === "2" && chance(0.8))
         ? null
         : pickAssignee(company);
     if (assignee) t.SUCCERSON = assignee.id;
@@ -522,10 +527,18 @@ function seed(db: DB): void {
     ["3", 78, () => daysAgo(int(2, 35))],
     ["4", 44, () => daysAgo(int(5, 50))],
   ];
+  /**
+   * 🔴 대기(1) = **고객사 승인권자의 결재 대기**다. 승인 단계를 안 쓰는 고객사
+   *    (CONFYN='N')에는 이 상태가 생길 수 없다 — createTicket 도 그 경우 2 로 시작한다.
+   *    아무 고객사에나 뿌리면 **아무도 진행시킬 수 없는 티켓**이 생긴다:
+   *    승인은 canDo 가 막고(설정을 모르면 차단), 접수는 상태 2 에서만 되기 때문이다.
+   *    (실측으로 8건이 그 상태로 갇혀 있었다)
+   */
+  const approvalCompanies = COMPANIES.filter((c) => c.confYn === "Y");
   for (const [progress, count, dateFn] of openPlan) {
     for (let i = 0; i < count; i++) {
       makeService(
-        pickCompany(),
+        progress === "1" ? pick(approvalCompanies) : pickCompany(),
         dateFn(),
         progress,
         chance(0.92) ? "SERVICE" : "WORK",
