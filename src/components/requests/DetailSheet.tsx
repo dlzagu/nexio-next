@@ -16,6 +16,7 @@ import { cn } from "@/lib/cn";
 import { MODULE, USER_ROLE_LABEL, isTerminal } from "@/lib/codes";
 import { fmtDate, fmtDateTime, fmtRelative } from "@/lib/format";
 import { announceReadStateChanged } from "@/lib/read-signal";
+import { isBlankHtml } from "@/lib/sanitize";
 import { fmtBytes } from "@/lib/attachments";
 import type { ActionSpec } from "@/lib/permissions";
 import type { Option } from "@/lib/data/meta";
@@ -203,7 +204,9 @@ export function DetailSheet({
           files: [] as File[],
         };
 
-  const [busy, setBusy] = useState<null | "save" | "comment" | "receive">(null);
+  const [busy, setBusy] = useState<
+    null | "save" | "comment" | "receive" | "propose"
+  >(null);
 
   /**
    * 접수 폼. 고객은 운영시스템·모듈을 모르는 경우가 많아 **빈 값이나 잘못된 값**으로 들어온다 —
@@ -283,6 +286,27 @@ export function DetailSheet({
       router.refresh();
     }
     return saved || res.status === 202;
+  };
+
+  /**
+   * 해결안 제시. 지금 화면에 쓴 처리내역을 **함께** 보낸다 —
+   * 따로 저장하고 다시 눌러야 하면 빈 해결안이 그대로 넘어간다.
+   *
+   * 비어 있으면 서버에 묻지 않고 처리결과 탭으로 데려간다. 400 을 받아 문장만 띄우면
+   * 어디에 써야 하는지 모른 채 같은 버튼을 다시 누르게 된다.
+   */
+  const propose = async () => {
+    if (isBlankHtml(draft?.answer)) {
+      setTab("solution");
+      setActionState({
+        echoNum: t?.echoNum ?? "",
+        msg: "‘답변’을 입력해야 해결안을 제시할 수 있습니다. 고객이 실제로 읽는 부분입니다.",
+      });
+      return;
+    }
+    setBusy("propose");
+    await runAction("propose", { solution: draft });
+    setBusy(null);
   };
 
   const saveSolution = async () => {
@@ -384,7 +408,9 @@ export function DetailSheet({
                           // 접수는 분류를 확정하는 단계다 — 바로 실행하지 않고 폼을 연다
                           a.action === "receive"
                             ? openTriage()
-                            : runAction(a.action)
+                            : a.action === "propose"
+                              ? propose()
+                              : runAction(a.action)
                         }
                       >
                         {a.label}

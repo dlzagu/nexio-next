@@ -70,7 +70,13 @@ export function canDo(
 
     case "receive":
       // 신청(2) → 진행(3) 접수
-      return p === "2" && isHandler;
+      if (p !== "2" || !isHandler) return false;
+      /**
+       * 🔴 아래 단계(save·propose·complete)와 **같은 기준**이어야 한다.
+       *    접수만 아무나 되게 두면, 남에게 배정된 건을 접수한 뒤
+       *    정작 '해결안 제시'가 안 나와 막힌다 (실측: 접수 대기 26건 중 19건이 이미 배정돼 있다).
+       */
+      return ticket.assigneeId ? isAssignee : true;
 
     case "save":
       // 처리내역 저장 — 진행 중인 단계에서 담당자

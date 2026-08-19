@@ -1,7 +1,7 @@
 import { MODULE, labelOf, type ProgressCode } from "../codes";
 import { select, write, type Param, type WriteStatement } from "../db";
 import { toDbStamp } from "../format";
-import { sanitize } from "../sanitize";
+import { isBlankHtml, sanitize } from "../sanitize";
 import type { SolutionPatch } from "../schemas";
 import type { TicketAction, TicketDetail, User } from "../types";
 import { attachmentStatements, type IncomingFile } from "./attachments";
@@ -27,6 +27,8 @@ interface Transition {
   reasonCol?: "AMEMO" | "CMEMO";
   /** 이력 로그 문구. 없으면 로그를 남기지 않는다 */
   log?: string;
+  /** 이 전이에 반드시 채워져 있어야 하는 처리내역 항목 */
+  requires?: { key: "answer" | "cause" | "process" | "result"; label: string };
 }
 
 /**
@@ -63,6 +65,11 @@ const TRANSITIONS: Partial<Record<TicketAction, Transition>> = {
   },
   propose: {
     to: "4",
+    /**
+     * 🔴 빈 해결안을 제시할 수는 없다. 고객 화면은 이 단계부터 '처리결과' 탭이
+     *    기본으로 열리는데, 열어 보니 아무것도 없으면 상태만 바뀐 셈이다.
+     */
+    requires: { key: "answer", label: "답변" },
     log: "해결안이 등록되었습니다. 처리결과를 확인해 주세요.",
   },
   complete: {
@@ -179,11 +186,39 @@ function touchReadState(echoNum: string, userId: string): WriteStatement {
   };
 }
 
+/** 전이에 필요한 처리내역이 비어 있다 — 라우트가 400 으로 돌려준다 */
+export class SolutionRequiredError extends Error {
+  constructor(public readonly label: string) {
+    super(`${label}을(를) 입력해야 이 단계로 넘어갈 수 있습니다.`);
+    this.name = "SolutionRequiredError";
+  }
+}
+
 export class UnsupportedActionError extends Error {
   constructor(action: string) {
     super(`지원하지 않는 액션입니다: ${action}`);
     this.name = "UnsupportedActionError";
   }
+}
+
+/**
+ * 이 전이에 필요한데 비어 있는 처리내역 항목의 라벨. 없으면 null.
+ *
+ * 라우트가 **쓰기 게이트 앞에서** 부르고, applyAction 이 마지막에 한 번 더 부른다 —
+ * 쓰기가 꺼져 있어도 "무엇을 채워야 하는지"는 알려줘야 하기 때문이다(첨부 검증과 같은 축).
+ * 이번에 함께 보낸 초안이 있으면 그것을, 없으면 이미 저장된 값을 본다.
+ */
+export function missingSolutionField(
+  action: TicketAction,
+  solution: SolutionPatch | undefined,
+  ticket: TicketDetail,
+): string | null {
+  const requires = TRANSITIONS[action]?.requires;
+  if (!requires) return null;
+  const value = solution
+    ? solution[requires.key]
+    : ticket.solution[requires.key];
+  return isBlankHtml(value) ? requires.label : null;
 }
 
 export interface ActionResult {
@@ -223,6 +258,10 @@ export async function applyAction(opts: {
 
   const rule = TRANSITIONS[action];
   if (!rule) throw new UnsupportedActionError(action);
+
+  // 마지막 방어선. 같은 판정을 라우트가 **쓰기 게이트 앞에서** 한 번 더 한다
+  const missing = missingSolutionField(action, solution, ticket);
+  if (missing) throw new SolutionRequiredError(missing);
 
   const now = toDbStamp();
   const statements: WriteStatement[] = [];

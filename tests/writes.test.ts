@@ -17,6 +17,7 @@ process.env.ALLOW_DEV_WRITES = "true";
 
 import {
   applyAction,
+  SolutionRequiredError,
   addComment,
   createTicket,
   UnsupportedActionError,
@@ -102,6 +103,21 @@ beforeAll(async () => {
   await select("SELECT 1 AS ok");
 });
 
+/** 처리내역 패치의 빈 형태. 여러 곳에서 answer 만 채워 쓴다 */
+const blankSolution = {
+  cause: "",
+  process: "",
+  improvement: "",
+  answer: "",
+  result: "",
+  devReason: "",
+  devContent: "",
+  expeTime: "",
+  workTime: "",
+  rWorkTime: "",
+  surTime: "",
+};
+
 describe("쓰기 관문 — fail-closed", () => {
   it("INSERT/UPDATE 외 구문은 실행하지 않는다", async () => {
     await expect(
@@ -155,9 +171,23 @@ describe("상태 전이 + 이력 로그", () => {
     expect(logs[logs.length - 1].PPROGRESS).toBe("3");
   });
 
+  it("🔴 답변이 비어 있으면 해결안을 제시할 수 없다", async () => {
+    const t = await pick("3");
+    // 상태만 4 로 넘어가면 고객 화면의 '처리결과' 탭이 빈 채로 열린다
+    await expect(
+      applyAction({ ticket: t, user: internal, action: "propose" }),
+    ).rejects.toBeInstanceOf(SolutionRequiredError);
+    expect((await getTicket(t.echoNum, internal))?.progress).toBe("3");
+  });
+
   it("해결안 제시(3→4) 와 완료(4→9) — 완료는 종료일·최종처리자를 찍는다", async () => {
     const t = await pick("3");
-    await applyAction({ ticket: t, user: internal, action: "propose" });
+    await applyAction({
+      ticket: t,
+      user: internal,
+      action: "propose",
+      solution: { ...blankSolution, answer: "<p>패치 적용했습니다</p>" },
+    });
     const proposed = await getTicket(t.echoNum, internal);
     expect(proposed?.progress).toBe("4");
     expect(proposed?.succDate).toBeNull();
@@ -218,20 +248,6 @@ describe("상태 전이 + 이력 로그", () => {
 });
 
 describe("처리내역 저장", () => {
-  const blankSolution = {
-    cause: "",
-    process: "",
-    improvement: "",
-    answer: "",
-    result: "",
-    devReason: "",
-    devContent: "",
-    expeTime: "",
-    workTime: "",
-    rWorkTime: "",
-    surTime: "",
-  };
-
   it("저장 시점에도 새니타이즈한다 — 읽기에서만 거르면 저장된 마크업이 남는다", async () => {
     const t = await pick("3");
     await applyAction({
@@ -576,6 +592,7 @@ describe("접수 — 분류 확정", () => {
       ticket: t,
       user: internal,
       action: "propose",
+      solution: { ...blankSolution, answer: "<p>조치했습니다</p>" },
       triage: { systemId: "14", systemName: "ERP 운영계" },
     });
     expect((await getTicket(t.echoNum, internal))?.systemId).toBe(keep);

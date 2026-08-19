@@ -5,7 +5,12 @@ import {
   validateUploads,
   type IncomingFile,
 } from "@/lib/data/attachments";
-import { applyAction, UnsupportedActionError } from "@/lib/data/mutations";
+import {
+  applyAction,
+  missingSolutionField,
+  SolutionRequiredError,
+  UnsupportedActionError,
+} from "@/lib/data/mutations";
 import { getTicket } from "@/lib/data/tickets";
 import { MODULE } from "@/lib/codes";
 import { select } from "@/lib/db";
@@ -168,6 +173,21 @@ export async function POST(
   const solution =
     parsed.data.solution && canSave ? parsed.data.solution : undefined;
 
+  /**
+   * 빈 해결안으로는 넘어갈 수 없다. **쓰기 게이트 앞**에서 본다 —
+   * 쓰기가 꺼져 있어도 무엇을 채워야 하는지는 알려줘야 한다(첨부 검증과 같은 축).
+   */
+  const missing = missingSolutionField(action, solution, ticket);
+  if (missing) {
+    return NextResponse.json(
+      {
+        code: "SOLUTION_REQUIRED",
+        message: `${missing}을(를) 입력해야 이 단계로 넘어갈 수 있습니다.`,
+      },
+      { status: 400 },
+    );
+  }
+
   if (!devWritesAllowed()) {
     return NextResponse.json(
       {
@@ -202,6 +222,13 @@ export async function POST(
       progress: result.progress,
     });
   } catch (e) {
+    // 빈 해결안으로는 넘어갈 수 없다 — 무엇을 채워야 하는지 문장으로 돌려준다
+    if (e instanceof SolutionRequiredError) {
+      return NextResponse.json(
+        { code: "SOLUTION_REQUIRED", message: e.message },
+        { status: 400 },
+      );
+    }
     if (e instanceof UnsupportedActionError) {
       // reapply 처럼 상태 전이가 아닌 액션이 여기로 오면 막는다. 재신청은 신청 폼으로 간다.
       return NextResponse.json(

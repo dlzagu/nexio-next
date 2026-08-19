@@ -29,6 +29,7 @@ import { POST as postRequest } from "@/app/api/requests/route";
 import { POST as postSession } from "@/app/api/session/route";
 import { POST as postAction } from "@/app/api/tickets/[echoNum]/action/route";
 import { GET as getAttachment } from "@/app/api/tickets/[echoNum]/attachments/[id]/route";
+import { GET as getTicketRoute } from "@/app/api/tickets/[echoNum]/route";
 import RequestsPage from "@/app/requests/page";
 import { select } from "@/lib/db";
 import { todaySeoul } from "@/lib/format";
@@ -90,7 +91,12 @@ beforeAll(async () => {
   moonTerminal = await pickTicket(
     "CUSTCODE='SJ001' AND CUSTPERSON='sj.moon' AND PROGRESS='9'",
   );
-  receivable = await pickTickets("CUSTCODE='SJ001' AND PROGRESS='2'", 3);
+  // 접수는 **담당자 규칙**을 따른다 — 남에게 배정된 건은 접수 자체가 막힌다.
+  // (HB001 은 제외: 타사 운영시스템 거부를 확인하는 테스트가 그 고객사를 쓴다)
+  receivable = await pickTickets(
+    "PROGRESS='2' AND CUSTCODE<>'HB001' AND (COALESCE(SUCCERSON,'')='' OR SUCCERSON='sy.kim')",
+    3,
+  );
 
   const f = await select<{ ID: number; PECHONUM: string }>(
     `SELECT f.ID, f.PECHONUM FROM NX_OPTREPORT_FILE f
@@ -201,6 +207,75 @@ describe("액션 라우트 — 화면을 거치지 않고 직접 불러도 막�
     expect(res.status).toBe(200);
     expect((await json(res)).progress).toBe("3");
     expect(await progressOf(receivable[2])).toBe("3");
+  });
+});
+
+describe("접수 → 해결안 제시 (실제 흐름)", () => {
+  /**
+   * 사용자가 실제로 겪은 두 가지를 그대로 고정한다.
+   *  1. 접수했는데 '해결안 제시' 버튼이 안 나온다
+   *  2. 처리결과를 아무것도 안 써도 해결안 제시가 저장된다
+   */
+  it("접수하면 담당자가 되고, 그 자리에서 '해결안 제시'가 보인다", async () => {
+    as("sy.kim");
+    const echoNum = (
+      await pickTickets(
+        "PROGRESS='2' AND COALESCE(SUCCERSON,'')='' AND ECHONUM NOT IN ('" +
+          receivable.join("','") +
+          "')",
+      )
+    )[0];
+
+    expect(
+      (await postAction(body({ action: "receive" }), ctx({ echoNum }))).status,
+    ).toBe(200);
+
+    const detail = await getTicketRoute(
+      new Request("http://test/"),
+      ctx({ echoNum }),
+    );
+    const data = (await detail.json()) as {
+      ticket: { progress: string; assigneeId: string | null };
+      actions: { action: string }[];
+    };
+    expect(data.ticket.progress).toBe("3");
+    expect(data.ticket.assigneeId).toBe("sy.kim");
+    expect(data.actions.map((a) => a.action)).toContain("propose");
+  });
+
+  it("답변이 비면 해결안 제시가 거부된다 — 상태도 그대로다", async () => {
+    as("sy.kim");
+    const echoNum = (
+      await pickTickets("PROGRESS='3' AND SUCCERSON='sy.kim'")
+    )[0];
+
+    const res = await postAction(body({ action: "propose" }), ctx({ echoNum }));
+    expect(res.status).toBe(400);
+    expect((await json(res)).code).toBe("SOLUTION_REQUIRED");
+    expect(await progressOf(echoNum)).toBe("3");
+  });
+
+  it("답변을 채우면 넘어가고, 그 답변이 실제로 저장된다", async () => {
+    as("sy.kim");
+    const echoNum = (
+      await pickTickets("PROGRESS='3' AND SUCCERSON='sy.kim'")
+    )[0];
+
+    const res = await postAction(
+      body({
+        action: "propose",
+        solution: { answer: "<p>패치를 적용했습니다</p>" },
+      }),
+      ctx({ echoNum }),
+    );
+    expect(res.status).toBe(200);
+    expect(await progressOf(echoNum)).toBe("4");
+
+    const rows = await select<{ ANSWER: string }>(
+      "SELECT ANSWER FROM NX_OPTREPORTD WHERE ECHONUM = @e",
+      [{ name: "e", value: echoNum }],
+    );
+    expect(rows[0].ANSWER).toContain("패치를 적용했습니다");
   });
 });
 
