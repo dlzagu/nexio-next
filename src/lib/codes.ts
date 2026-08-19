@@ -164,3 +164,14 @@ export function mainFlowIndex(raw: string | null | undefined): number {
   if (p === "11" || p === "12") return -1; // 종료(취소·반려) — 게이지를 채우지 않는다
   return 0;
 }
+
+/**
+ * 조회 화면 첫 진입의 기본값.
+ *
+ * 목록은 검색창이 아니라 **작업 큐**다 — 열자마자 "내가 지금 볼 것"이 떠 있어야 한다.
+ * 그래서 내 담당 + 최근 15일로 좁혀서 시작하고, 더 봐야 하면 사용자가 넓힌다.
+ * ⚠️ 파라미터가 하나도 없을 때만 적용한다 — 대시보드 카드처럼 조건을 갖고 들어오는
+ *    링크를 기간으로 다시 자르면 **카드 숫자와 목록 건수가 어긋난다**.
+ */
+export const DEFAULT_LIST_VIEW = "mine";
+export const DEFAULT_RANGE_DAYS = 15;

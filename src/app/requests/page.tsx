@@ -1,6 +1,9 @@
+import { redirect } from "next/navigation";
 import { RequestsView } from "@/components/requests/RequestsView";
+import { DEFAULT_LIST_VIEW, DEFAULT_RANGE_DAYS } from "@/lib/codes";
 import { getMeta } from "@/lib/data/meta";
 import { ARCHIVE_PAGE_SIZE, listTickets } from "@/lib/data/tickets";
+import { todaySeoul } from "@/lib/format";
 import { currentUser } from "@/lib/session";
 import type { ListView, TicketFilters } from "@/lib/types";
 
@@ -16,6 +19,28 @@ export default async function RequestsPage({
   searchParams: Promise<SP>;
 }) {
   const sp = await searchParams;
+
+  /**
+   * 첫 진입이면 기본 조건을 **URL 에 실어** 되돌린다 (내 담당 · 최근 15일).
+   *
+   * 화면에서 몰래 적용하지 않고 주소로 만드는 이유:
+   *  · 필터 칸에 그 값이 그대로 보인다 — 왜 이만큼만 나오는지 알 수 있다
+   *  · 지우면 지워진 채로 남는다 (기본값이 다시 끼어들지 않는다)
+   *  · 공유·새로고침·뒤로가기가 그대로 동작한다
+   *  · 날짜를 서버에서 정하므로 서버(UTC)·브라우저(KST) 차이로 하루 어긋날 일이 없다
+   *
+   * ⚠️ **파라미터가 하나도 없을 때만** 이다. 대시보드 카드처럼 조건을 갖고 들어오는
+   *    링크까지 기간으로 자르면 카드 숫자와 목록 건수가 어긋난다.
+   */
+  if (Object.keys(sp).length === 0) {
+    const params = new URLSearchParams({
+      view: DEFAULT_LIST_VIEW,
+      from: todaySeoul(DEFAULT_RANGE_DAYS),
+      to: todaySeoul(),
+    });
+    redirect(`/requests?${params.toString()}`);
+  }
+
   const user = await currentUser();
   if (!user) return null;
 

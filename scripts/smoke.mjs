@@ -81,8 +81,17 @@ try {
 
   for (const path of [...PAGES, ...APIS]) {
     const res = await fetch(BASE + path, { redirect: "manual" });
-    const ok = res.status === 200 || (path === "/" && res.status < 400);
-    if (ok) console.log(`  ✓ ${path} → ${res.status}`);
+    // 리다이렉트도 정상이다 — `/` 는 대시보드로, `/requests` 는 기본 조건을 URL 에 실어 되돌린다.
+    // 다만 **간 곳까지 확인**한다. 목적지가 깨져 있으면 여기서 통과시키면 안 된다.
+    if (res.status >= 300 && res.status < 400) {
+      const to = res.headers.get("location");
+      const next = await fetch(new URL(to, BASE));
+      if (next.status === 200)
+        console.log(`  ✓ ${path} → ${res.status} → ${to}`);
+      else fail(`${path} → ${res.status} → ${to} → ${next.status}`);
+      continue;
+    }
+    if (res.status === 200) console.log(`  ✓ ${path} → 200`);
     else fail(`${path} → ${res.status}`);
   }
 

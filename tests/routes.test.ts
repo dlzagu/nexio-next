@@ -29,7 +29,9 @@ import { POST as postRequest } from "@/app/api/requests/route";
 import { POST as postSession } from "@/app/api/session/route";
 import { POST as postAction } from "@/app/api/tickets/[echoNum]/action/route";
 import { GET as getAttachment } from "@/app/api/tickets/[echoNum]/attachments/[id]/route";
+import RequestsPage from "@/app/requests/page";
 import { select } from "@/lib/db";
+import { todaySeoul } from "@/lib/format";
 
 const as = (id: string) => {
   session.userId = id;
@@ -328,5 +330,40 @@ describe("세션 전환 라우트", () => {
 
   it("빈 값은 400", async () => {
     expect((await postSession(body({ userId: "  " }))).status).toBe(400);
+  });
+});
+
+describe("조회 화면의 기본 조건", () => {
+  it("오늘·N일 전 계산은 서버 타임존과 무관하게 KST 로 고정된다", () => {
+    const today = todaySeoul();
+    const before = todaySeoul(15);
+    expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(before).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const days =
+      (Date.parse(today + "T00:00:00Z") - Date.parse(before + "T00:00:00Z")) /
+      86_400_000;
+    expect(days).toBe(15);
+  });
+
+  it("첫 진입은 내 담당 · 최근 15일로 되돌린다", async () => {
+    // redirect() 는 특수 예외를 던진다 — digest 에 목적지가 실려 있다
+    const err = await RequestsPage({ searchParams: Promise.resolve({}) }).then(
+      () => null,
+      (e: { digest?: string }) => e,
+    );
+    expect(err?.digest ?? "").toContain(`/requests?view=mine&from=`);
+    expect(err?.digest ?? "").toContain(`to=${todaySeoul()}`);
+  });
+
+  it("조건을 갖고 들어온 링크는 기간으로 다시 자르지 않는다", async () => {
+    // 대시보드 카드가 이렇게 들어온다. 여기서 기간을 끼우면 카드 숫자와 목록이 어긋난다
+    as("sy.kim");
+    const err = await RequestsPage({
+      searchParams: Promise.resolve({ view: "open", progress: "3" }),
+    }).then(
+      () => null,
+      (e: { digest?: string }) => e,
+    );
+    expect(err).toBeNull();
   });
 });

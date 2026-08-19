@@ -154,3 +154,17 @@ export function plainPreview(
     .trim();
   return plain.length > max ? plain.slice(0, max) + "…" : plain;
 }
+
+/**
+ * 오늘(한국 시간)의 `YYYY-MM-DD`.
+ *
+ * 🔴 `new Date()` 를 그대로 쓰면 안 된다 — 서버는 UTC(Vercel), 브라우저는 KST 라
+ *    같은 순간에도 **날짜가 하루 다르다**(실측: 서버 08-12 / 브라우저 08-13).
+ *    저장값이 전부 KST 벽시계이므로 기준을 KST 로 고정한다.
+ *    한국은 서머타임이 없어 +09:00 이 항상 참이다.
+ */
+export function todaySeoul(daysAgo = 0): string {
+  const KST = 9 * 60 * 60 * 1000;
+  const t = Date.now() + KST - daysAgo * 24 * 60 * 60 * 1000;
+  return new Date(t).toISOString().slice(0, 10);
+}
