@@ -40,6 +40,7 @@
     "@tiptap/pm": "^3.29.2",
     "@tiptap/react": "^3.29.2",
     "@tiptap/starter-kit": "^3.29.2",
+    "@vercel/analytics": "^2.0.1",
     "better-sqlite3": "^13.0.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",

@@ -98,3 +98,28 @@ npm run verify
 
 빌드 산출물이 있으면 `npm run smoke` 로 **앱을 실제로 띄워** 확인한다 —
 타입·테스트·빌드를 다 통과하고도 화면만 깨진 사고가 세 번 있었다 (ADR-0005).
+
+## 7. 방문 통계 (Vercel Web Analytics)
+
+익명 집계만 한다 — 쿠키 없음 · IP 저장 없음 · 개인 식별 없음. 방문 수·페이지·
+유입 링크(UTM)·기기·국가가 Vercel 대시보드(Analytics 탭)에 쌓인다.
+프로덕션에서만 전송되고 로컬 dev 에서는 아무것도 보내지 않는다.
+
+**본인 기기 제외** — IP 는 통신사·와이파이를 오가며 바뀌어 기준이 못 된다.
+각 기기에서 **한 번만** 아래 주소를 열면 그 브라우저는 이후 집계에서 빠진다:
+
+```
+https://nexio-next.vercel.app/?analytics=off     (되돌리기: ?analytics=on)
+```
+
+**유입 경로 구분** — 방문자를 추적하는 게 아니라 **내가 배포한 링크를 갈라** 놓는다.
+이력서·지원서·프로필마다 다른 `utm_source` 를 붙이면 대시보드가 출처별로 집계한다:
+
+```
+https://nexio-next.vercel.app/?utm_source=resume
+https://nexio-next.vercel.app/?utm_source=github
+https://nexio-next.vercel.app/?utm_source=<회사별 코드>
+```
+
+⚠️ **어느 회사에 어떤 코드를 줬는지의 대응표는 이 저장소에 두지 않는다** — 공개
+저장소라 지원 이력이 그대로 노출된다. 로컬 메모로만 관리할 것.

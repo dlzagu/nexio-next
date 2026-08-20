@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { AnalyticsClient } from "@/components/layout/AnalyticsClient";
 import { AppShell } from "@/components/layout/AppShell";
 import { themeBootScript } from "@/components/layout/Topbar";
 import "./globals.css";
@@ -35,6 +36,8 @@ export default function RootLayout({
           {themeBootScript}
         </Script>
         <AppShell>{children}</AppShell>
+        {/* 익명 방문 통계 — 본인 기기 제외는 ?analytics=off (AnalyticsClient 주석 참조) */}
+        <AnalyticsClient />
       </body>
     </html>
   );
