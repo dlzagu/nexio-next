@@ -30,6 +30,7 @@ import { POST as postSession } from "@/app/api/session/route";
 import { POST as postAction } from "@/app/api/tickets/[echoNum]/action/route";
 import { GET as getAttachment } from "@/app/api/tickets/[echoNum]/attachments/[id]/route";
 import { GET as getTicketRoute } from "@/app/api/tickets/[echoNum]/route";
+import Home from "@/app/page";
 import RequestsPage from "@/app/requests/page";
 import { select } from "@/lib/db";
 import { todaySeoul } from "@/lib/format";
@@ -401,6 +402,29 @@ describe("세션 전환 라우트", () => {
 
   it("빈 값은 400", async () => {
     expect((await postSession(body({ userId: "  " }))).status).toBe(400);
+  });
+});
+
+describe("루트 리다이렉트", () => {
+  it("쿼리를 들고 간다 — 버리면 ?analytics=off 같은 스위치가 조용히 무효가 된다", async () => {
+    const err = await Home({
+      searchParams: Promise.resolve({ analytics: "off", utm_source: "resume" }),
+    }).then(
+      () => null,
+      (e: { digest?: string }) => e,
+    );
+    expect(err?.digest ?? "").toContain("/dashboard?");
+    expect(err?.digest ?? "").toContain("analytics=off");
+    expect(err?.digest ?? "").toContain("utm_source=resume");
+  });
+
+  it("쿼리가 없으면 깨끗하게 /dashboard 로", async () => {
+    const err = await Home({ searchParams: Promise.resolve({}) }).then(
+      () => null,
+      (e: { digest?: string }) => e,
+    );
+    expect(err?.digest ?? "").toContain("/dashboard");
+    expect(err?.digest ?? "").not.toContain("?");
   });
 });
 
