@@ -81,7 +81,7 @@ export function Combobox({
         <Popover.Content
           align="start"
           sideOffset={4}
-          className="border-line bg-surface shadow-3 z-[var(--z-dropdown)] w-[min(320px,90vw)] overflow-hidden rounded-md border"
+          className="pop border-line bg-surface shadow-3 w-[min(320px,90vw)] overflow-hidden rounded-md border"
         >
           <div className="border-line-subtle flex items-center gap-2 border-b px-2.5 py-2">
             <Search size={13} className="text-fg-subtle shrink-0" aria-hidden />

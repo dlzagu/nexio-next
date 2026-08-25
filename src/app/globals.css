@@ -528,6 +528,15 @@ select.input {
 .sheet[data-width="full"] {
   width: 100vw;
 }
+/* ---- 떠 있는 목록(콤보박스·알림·메뉴) ----
+   🔴 시트·모달 **위**에 뜬다. 토큰 순서만 따르면(dropdown 200 < sheet 300 < modal 400)
+   시트 안에서 연 드롭다운이 시트 뒤로 깔려 "눌러도 안 열리는" 것처럼 보인다(실측).
+   떠 있는 목록은 언제나 **자기를 연 것보다 위**여야 하므로 한 단계 위로 올린다.
+   토큰 자체는 손대지 않는다 — 정본이 docs/design/tokens.css 이고 재추출로 덮인다. */
+.pop {
+  z-index: calc(var(--z-modal) + 1);
+}
+
 .modal {
   position: fixed;
   z-index: var(--z-modal);

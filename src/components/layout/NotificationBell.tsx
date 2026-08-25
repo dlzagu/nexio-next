@@ -104,7 +104,7 @@ export function NotificationBell() {
           align="end"
           sideOffset={6}
           collisionPadding={8}
-          className="border-line bg-surface shadow-3 z-[var(--z-dropdown)] flex max-h-[70vh] w-[min(380px,calc(100vw-16px))] flex-col rounded-md border"
+          className="pop border-line bg-surface shadow-3 flex max-h-[70vh] w-[min(380px,calc(100vw-16px))] flex-col rounded-md border"
         >
           <div className="border-line-subtle flex items-center justify-between gap-2 border-b px-3 py-2">
             <span className="text-12 text-fg-strong font-medium">

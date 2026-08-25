@@ -185,7 +185,7 @@ export function Topbar({
             align="end"
             sideOffset={6}
             collisionPadding={8}
-            className="border-line bg-surface shadow-3 z-[var(--z-dropdown)] w-[min(280px,calc(100vw-16px))] rounded-md border p-2"
+            className="pop border-line bg-surface shadow-3 w-[min(280px,calc(100vw-16px))] rounded-md border p-2"
           >
             <p className="text-11 text-fg-subtle px-2 pt-1 pb-2 leading-relaxed">
               역할 전환 데모입니다. 페르소나는 전부 시드 데이터의 가상 인물이며,
