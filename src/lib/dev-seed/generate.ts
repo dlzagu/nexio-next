@@ -13,6 +13,7 @@ import {
   MIGRATION_TITLES,
   NOTICES,
   REJECT_REASONS,
+  TASK_TEMPLATES,
   REQUESTER_COMMENTS,
   TEMPLATES,
   VENDOR_COMPANY,
@@ -294,6 +295,34 @@ function seed(db: DB): void {
       fmtDT(daysAgo(n.daysAgo)),
     ),
   );
+
+  /**
+   * 정기 업무 템플릿. 운영시스템은 그 고객사의 **첫 번째 것**으로 잡는다 —
+   * 없는 시스템을 가리키면 생성한 티켓의 시스템 칸이 비고, 화면은 원인을 말해 주지 못한다.
+   * `LAST_RUN_YM` 은 이번 달로 찍은 것과 비운 것을 섞어 둔다(배지 두 상태를 다 보여준다).
+   */
+  const insTemplate = db.prepare(
+    `INSERT INTO NX_TASK_TEMPLATE
+       (CUSTCODE, TITLE, CONTENT, B1GUBUN, MODULE, REQLEVEL, MEDIA, OWNER,
+        DAY_OF_MONTH, ACTIVE, LAST_RUN_YM, REG_DT)
+     VALUES (?,?,?,?,?,'3','내부',?,?,'Y',?,?)`,
+  );
+  const thisYm = fmtDT(new Date()).slice(0, 7);
+  for (const t of TASK_TEMPLATES) {
+    const company = COMPANIES.find((c) => c.code === t.custCode);
+    if (!company) continue;
+    insTemplate.run(
+      t.custCode,
+      t.title,
+      paras([t.content]),
+      company.systems[0].id,
+      t.moduleCode,
+      t.ownerId,
+      t.day,
+      t.ranThisMonth ? thisYm : null,
+      fmtDT(daysAgo(60)),
+    );
+  }
 
   // ── 티켓 ──────────────────────────────────────────────
   const totalWeight = COMPANIES.reduce((a, c) => a + c.weight, 0);

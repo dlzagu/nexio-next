@@ -11,7 +11,7 @@
  * 컬럼을 추가해도 이전 DB 가 그대로 열려 "없는 컬럼" 오류가 난다 →
  * 버전이 다르면 ensureSeed 가 통째로 다시 만든다 (데모 DB 라 잃을 게 없다).
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export const SCHEMA_SQL = `
 CREATE TABLE NX_SCHEMA (VERSION INTEGER NOT NULL);
@@ -132,6 +132,30 @@ CREATE TABLE NX_OPTREPORT_FILE (
   REG_DT    TEXT
 );
 CREATE INDEX idx_f_p ON NX_OPTREPORT_FILE (PECHONUM);
+
+/*
+ * 정기 업무 템플릿 — 원본에 없는 표다.
+ * "매달 첫 주 백업 확인"처럼 **고객사가 신청하지 않는 반복 업무**를 담아 두고,
+ * 버튼 한 번에 이번 달 티켓을 만든다. 서버리스라 스케줄러가 없어 사람이 방아쇠를 당기지만,
+ * LAST_RUN_YM 이 이번 달이면 다시 만들지 않으므로 여러 번 눌러도 한 건이다.
+ */
+CREATE TABLE NX_TASK_TEMPLATE (
+  ID           INTEGER PRIMARY KEY AUTOINCREMENT,
+  CUSTCODE     TEXT NOT NULL,
+  TITLE        TEXT NOT NULL,
+  CONTENT      TEXT,
+  B1GUBUN      INTEGER,
+  MODULE       TEXT,
+  REQLEVEL     TEXT DEFAULT '3',
+  MEDIA        TEXT,
+  OWNER        TEXT,
+  DAY_OF_MONTH INTEGER DEFAULT 1,
+  ACTIVE       TEXT DEFAULT 'Y',
+  /** 마지막으로 티켓을 만든 달 'YYYY-MM' — 같은 달 중복 생성을 막는 유일한 장치다 */
+  LAST_RUN_YM  TEXT,
+  REG_DT       TEXT
+);
+CREATE INDEX idx_tt_cust ON NX_TASK_TEMPLATE (CUSTCODE, ACTIVE);
 
 CREATE TABLE BOARD_DETAIL (
   NTT_ID    INTEGER PRIMARY KEY,

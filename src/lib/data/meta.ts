@@ -10,6 +10,11 @@ export interface Option {
   value: string;
   label: string;
   hint?: string;
+  /**
+   * 이 선택지가 속한 고객사 코드. 화면이 **고른 고객사에 맞게 목록을 좁히는** 데 쓴다.
+   * 좁히는 건 편의고 경계가 아니다 — 라우트가 소속을 다시 확인한다(fail-closed).
+   */
+  group?: string;
 }
 
 export interface MetaData {
@@ -76,8 +81,9 @@ export async function getMeta(user: User): Promise<MetaData> {
       MBER_NM: string | null;
       DEPT: string | null;
       EMAIL: string | null;
+      COMPANY_CODE: string | null;
     }>(
-      `SELECT m.MBER_ID, m.MBER_NM, m.DEPT, m.EMAIL
+      `SELECT m.MBER_ID, m.MBER_NM, m.DEPT, m.EMAIL, m.COMPANY_CODE
          FROM MEMBER_MST m WHERE ${where} ORDER BY m.MBER_NM LIMIT 400`,
       params,
     );
@@ -85,6 +91,7 @@ export async function getMeta(user: User): Promise<MetaData> {
       value: r.MBER_ID,
       label: (r.MBER_NM ?? r.MBER_ID).trim(),
       hint: (r.DEPT ?? "").trim() || undefined,
+      group: (r.COMPANY_CODE ?? "").trim() || undefined,
     }));
   };
 
@@ -110,6 +117,7 @@ export async function getMeta(user: User): Promise<MetaData> {
       value: String(r.OPER_SYS_ID),
       label: (r.SYSTEM_NAME ?? "").trim() || `시스템 ${r.OPER_SYS_ID}`,
       hint: isInternal ? (r.COMPANY_CODE ?? "").trim() : undefined,
+      group: (r.COMPANY_CODE ?? "").trim() || undefined,
     }));
   };
 

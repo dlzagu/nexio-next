@@ -15,6 +15,7 @@ import { useForm } from "react-hook-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { AttachPicker, toAttachmentPayload } from "./AttachPicker";
 import { Combobox } from "@/components/ui/Combobox";
+import { Field } from "@/components/ui/Field";
 import { Notice } from "@/components/ui/EmptyState";
 import { TokenInput } from "@/components/ui/TokenInput";
 import { cn } from "@/lib/cn";
@@ -508,35 +509,5 @@ export function RequestForm({
         </button>
       </div>
     </form>
-  );
-}
-
-function Field({
-  id,
-  label,
-  required,
-  error,
-  hint,
-  children,
-}: {
-  id: string;
-  label: string;
-  required?: boolean;
-  error?: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label htmlFor={id} className={cn("label", required && "label-req")}>
-        {label}
-      </label>
-      {children}
-      {error ? (
-        <p className="field-error">{error}</p>
-      ) : hint ? (
-        <p className="field-hint">{hint}</p>
-      ) : null}
-    </div>
   );
 }

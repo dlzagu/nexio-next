@@ -1,5 +1,19 @@
 import { z } from "zod";
 import { MAX_FILES, MAX_FILE_BYTES } from "./attachments";
+import { todaySeoul } from "./format";
+
+/** 오늘(벽시계). UTC 로 재면 밤에 하루가 밀려 어제 끝낸 일이 "미래"가 된다 */
+const todayWallClock = () => todaySeoul();
+
+/**
+ * 날짜 칸의 형식. 🔴 정규식 없이 문자열 비교만 하면 `2026-08-01T00:00:00Z` 같은 값이
+ * 그대로 통과해 DB 에 `"2026-08-01T00:00:00Z 00:00:00"` 이 저장된다 — 날짜 칸이
+ * 영원히 '-' 로 보이고 되돌릴 방법이 없다. 폼은 <input type="date"> 라 안전하지만
+ * **신뢰 경계는 스키마**다 (API 를 직접 부르면 무엇이든 올 수 있다).
+ */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+/** 화면이 그릴 수 있는 하한 (format.ts MIN_DATE) — 이보다 옛날은 표시가 '-' 가 된다 */
+const MIN_DATE_STR = "2015-01-01";
 
 /**
  * 폼 검증과 BFF 응답 검증에 **같은 스키마**를 쓴다.
@@ -8,6 +22,22 @@ import { MAX_FILES, MAX_FILE_BYTES } from "./attachments";
  */
 
 const MAX_SCHE = new Date(new Date().getFullYear() + 2, 11, 31);
+
+/**
+ * 희망 완료일. 신청 폼과 업무 등록이 **같은 규칙**을 본다 —
+ * 한쪽만 열어 두면 그쪽으로 이상치가 들어온다.
+ */
+const scheDateField = z
+  .string()
+  .optional()
+  .default("")
+  // 형식을 먼저 고정한다 — `2026-08-01T00:00:00Z` 는 아래 범위 비교를 통과해 버린다
+  .refine((v) => !v || DATE_ONLY.test(v), "날짜 형식이 올바르지 않습니다")
+  .refine(
+    (v) => !v || new Date(v) <= MAX_SCHE,
+    // 실측 미래 이상치 3건(최대 2105-07-22) 재발 방지
+    "희망 완료일이 너무 멉니다 (2년 이내로 선택해 주세요)",
+  );
 
 export const requestFormSchema = z.object({
   custCode: z.string().min(1, "고객사를 선택해 주세요"),
@@ -24,15 +54,7 @@ export const requestFormSchema = z.object({
 
   moduleCode: z.string().optional().default(""),
   priority: z.string().optional().default("3"),
-  scheDate: z
-    .string()
-    .optional()
-    .default("")
-    .refine(
-      (v) => !v || new Date(v) <= MAX_SCHE,
-      // 실측 미래 이상치 3건(최대 2105-07-22) 재발 방지
-      "희망 완료일이 너무 멉니다 (2년 이내로 선택해 주세요)",
-    ),
+  scheDate: scheDateField,
   isPublic: z.boolean().default(false),
   refEmails: z
     .array(z.string().email("이메일 형식이 올바르지 않습니다"))
@@ -111,8 +133,12 @@ export const triageSchema = z.object({
   moduleCode: z.string().optional().default(""),
   /** 예상 처리 시간(h). 소수 허용 */
   expeTime: z.string().optional().default(""),
-  /** 예상 처리일 (YYYY-MM-DD) */
-  scheDate: z.string().optional().default(""),
+  /** 예상 처리일 (YYYY-MM-DD). 형식을 안 막으면 그대로 이어 붙여 저장된다 */
+  scheDate: z
+    .string()
+    .optional()
+    .default("")
+    .refine((v) => !v || DATE_ONLY.test(v), "날짜 형식이 올바르지 않습니다"),
 });
 
 export type Triage = z.output<typeof triageSchema>;
@@ -161,3 +187,128 @@ export const newCustomerSchema = z.object({
 });
 
 export type NewCustomerForm = z.input<typeof newCustomerSchema>;
+
+/* ── 업무 등록(대리 등록) ─────────────────────────────────── */
+
+/**
+ * 운영팀이 고객사 대신 넣는 건. 신청 폼과 **다른 스키마**인 이유는 두 가지다.
+ *   · 신청자가 없을 수 있다 — 정기 백업·패치는 고객사가 발의하지 않는다
+ *   · 출처(전화·메일·내부)를 반드시 남긴다 — 포털로 들어온 것처럼 보이면 안 된다
+ * 화면과 라우트가 이 하나를 공유한다(컨벤션).
+ */
+export const taskIntakeSchema = z
+  .object({
+    kind: z.enum(["phone", "email", "routine", "patch", "other"]),
+    custCode: z.string().min(1, "고객사를 선택해 주세요"),
+    systemId: z.string().min(1, "운영시스템을 선택해 주세요"),
+    title: z
+      .string()
+      .min(1, "제목을 입력해 주세요")
+      .max(150, "제목은 150자까지 입력할 수 있습니다"),
+    content: z.string().min(1, "업무 내용을 입력해 주세요"),
+    /** 비우면 등록한 사람이 신청자가 된다 (고객사가 발의하지 않은 업무) */
+    requesterId: z.string().optional().default(""),
+    moduleCode: z.string().optional().default(""),
+    priority: z.string().optional().default("3"),
+    scheDate: scheDateField,
+    /**
+     * 등록 시점의 처리 단계. 현업은 **끝난 뒤에 적기도 한다** —
+     * 전화로 받아 그 자리에서 처리하고 나중에 기록하는 경우가 흔하다.
+     *   2 신청(접수 전, 담당 없음) · 3 진행(내 담당) · 4 해결안 제시 · 9 완료
+     * 값은 상태 코드 그대로 쓴다 — 화면·DB·전이표가 같은 어휘를 보게 한다.
+     */
+    stage: z.enum(["2", "3", "4", "9"]).default("3"),
+    /**
+     * 처리 내용(답변). 해결안 제시·완료로 등록할 때 **필수**다.
+     * 그 단계부터 고객 화면은 '처리결과' 탭이 기본으로 열리는데, 비어 있으면 빈 화면이 뜬다
+     * (전이표의 requires 와 같은 규칙 — 상태만 바꾸는 전이는 허용하지 않는다).
+     */
+    answer: z.string().optional().default(""),
+    /** 완료일. 비우면 오늘. 이미 끝난 건을 나중에 적는 경우가 있어 과거를 받는다 */
+    doneDate: z.string().optional().default(""),
+    /** 실제 작업 시간(h). 선택 */
+    workTime: z.string().optional().default(""),
+    /** 매월 반복 업무로도 저장할지 */
+    repeatMonthly: z.boolean().default(false),
+    /**
+     * 매월 며칠 기준인가.
+     * ⚠️ 28일까지만 받는다 — 29~31 을 허용하면 2월이 없는 달이 되어
+     *    "이번 달에는 안 생기는 정기 업무"가 조용히 만들어진다.
+     */
+    repeatDay: z.coerce
+      .number({ message: "반복 기준일을 숫자로 적어 주세요" })
+      .int("반복 기준일은 하루 단위로 적어 주세요")
+      .min(1, "반복 기준일은 1일부터 고를 수 있습니다")
+      // 영어 기본 문구가 새어 나가지 않게 직접 적는다 — 이 앱은 한국어 전용이다
+      .max(28, "반복 기준일은 28일까지입니다 (29~31일은 없는 달이 생깁니다)")
+      .default(1),
+  })
+  /**
+   * 단계에 따라 **필요한 입력이 달라진다.** 전이표(mutations.ts TRANSITIONS)가
+   * 액션마다 requires 를 쥐고 있는 것과 같은 축이다 — 여기서 막지 않으면
+   * 처리결과 탭이 기본으로 열리는 단계인데 내용이 없는 티켓이 만들어진다.
+   */
+  .superRefine((v, ctx) => {
+    if ((v.stage === "4" || v.stage === "9") && !v.answer.trim()) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["answer"],
+        message:
+          v.stage === "9"
+            ? "완료로 등록하려면 처리 내용을 적어야 합니다"
+            : "해결안 제시로 등록하려면 답변을 적어야 합니다",
+      });
+    }
+    if (v.stage === "9" && v.doneDate) {
+      if (!DATE_ONLY.test(v.doneDate)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["doneDate"],
+          message: "완료일은 YYYY-MM-DD 형식이어야 합니다",
+        });
+      } else if (v.doneDate < MIN_DATE_STR) {
+        // 화면이 '-' 로 그리는 날짜를 저장하면 사용자는 완료일이 사라진 것으로 본다
+        ctx.addIssue({
+          code: "custom",
+          path: ["doneDate"],
+          message: "완료일이 너무 과거입니다 (2015-01-01 이후)",
+        });
+      } else if (v.doneDate > todayWallClock()) {
+        // 미래 완료일은 사실이 아니다 — 아직 끝나지 않은 일을 끝났다고 적는 것
+        ctx.addIssue({
+          code: "custom",
+          path: ["doneDate"],
+          message: "완료일이 오늘보다 뒤일 수 없습니다",
+        });
+      }
+    }
+    if (v.workTime.trim() && !/^\d{1,3}(\.\d{1,2})?$/.test(v.workTime.trim())) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["workTime"],
+        message: "작업 시간은 숫자로 적어 주세요 (예: 1.5)",
+      });
+    }
+  });
+
+export type TaskIntakeForm = z.input<typeof taskIntakeSchema>;
+export type TaskIntakeParsed = z.output<typeof taskIntakeSchema>;
+
+/** 업무 등록 폼의 필수 검사 순서 — 제출 시 첫 오류로 스크롤하는 기준 */
+export const TASK_REQUIRED_ORDER: (keyof TaskIntakeParsed)[] = [
+  "custCode",
+  "systemId",
+  "title",
+  "content",
+  // 단계에 따라 필수가 되는 것들 — 요약 배너가 이유를 함께 보여준다
+  "answer",
+  "doneDate",
+  "workTime",
+  "repeatDay",
+];
+
+/** 정기 업무 템플릿 비활성 — 목록에서 내리는 것만 한다(행은 남긴다) */
+export const templatePatchSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  active: z.boolean(),
+});

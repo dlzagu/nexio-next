@@ -20,11 +20,18 @@ export function toParagraphs(text: string): string {
     .join("");
 }
 
+/**
+ * 두 칸을 한 본문으로. **증상이 비면 그 구획을 아예 만들지 않는다** —
+ * 업무 등록(대리 등록)은 증상을 따로 받지 않아서, 그대로 두면 상세 화면에
+ * 내용 없는 '증상' 제목만 덩그러니 남는다(빈 칸은 고장으로 읽힌다).
+ */
 export function composeBody(symptom: string, content: string): string {
-  return (
-    `<p><strong>${SYMPTOM_LABEL}</strong></p>${toParagraphs(symptom)}` +
-    `<p><strong>${CONTENT_LABEL}</strong></p>${toParagraphs(content)}`
-  );
+  const body = toParagraphs(content);
+  const head = symptom.trim()
+    ? `<p><strong>${SYMPTOM_LABEL}</strong></p>${toParagraphs(symptom)}`
+    : "";
+  // 구획이 하나뿐이면 제목도 붙이지 않는다 — 나눌 것이 없는데 나눈 척하지 않는다
+  return head ? `${head}<p><strong>${CONTENT_LABEL}</strong></p>${body}` : body;
 }
 
 /**

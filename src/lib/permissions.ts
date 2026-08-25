@@ -230,6 +230,31 @@ export function cancelHint(
   return "현재 단계에서는 취소할 수 없습니다. 담당자에게 문의해 주세요.";
 }
 
+/* ── 업무 등록(대리 등록) ─────────────────────────────────── */
+
+/**
+ * 🔒 운영팀만 대리 등록할 수 있다.
+ *
+ * 고객사 사용자에게는 이미 신청 화면이 있고(그쪽이 정상 경로다), 외부업체는
+ * **배정받아 처리하는 쪽이지 발의 주체가 아니다** — 신청 라우트가 VENDOR 를 막는
+ * 것과 같은 축이다. 축이 어긋나면 "여기선 되는데 저기선 안 되는" 경로가 생긴다.
+ */
+export function canCreateTask(user: User | null): boolean {
+  return user?.role === "INTERNAL";
+}
+
+/** 왜 막혔는지 — 버튼이 조용히 사라지면 "왜 안 되지"가 남는다 */
+export function taskIntakeHint(user: User | null): string | null {
+  if (!user) return "로그인이 필요합니다.";
+  if (user.role === "CUSTOMER") {
+    return "요청 등록은 '서비스 신청' 화면을 이용해 주세요.";
+  }
+  if (!canCreateTask(user)) {
+    return "업무 등록은 운영팀만 사용할 수 있습니다.";
+  }
+  return null;
+}
+
 /* ── 고객사 관리 ──────────────────────────────────────────── */
 
 /**

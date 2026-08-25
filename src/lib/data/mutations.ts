@@ -456,6 +456,12 @@ export async function addComment(opts: {
 export interface NewRequestInput {
   /** 첨부 파일 (검증은 attachmentStatements 안에서 한 번 더 한다) */
   files?: IncomingFile[];
+  /**
+   * 이 티켓과 **함께 커밋해야 하는** 문장 (정기 업무 템플릿 저장·생성월 갱신).
+   * 첨부와 같은 축이다 — 나눠 커밋하면 "티켓은 생겼는데 반복 등록은 안 된" 상태가 남고,
+   * 사용자는 등록됐다고 믿는다.
+   */
+  extra?: WriteStatement[];
   custCode: string;
   requesterId: string;
   systemId: string;
@@ -471,6 +477,45 @@ export interface NewRequestInput {
   parentEchoNum: string | null;
   /** 고객사가 승인 단계를 쓰는가 — 쓰면 대기(1), 아니면 바로 신청(2)으로 접수된다 */
   usesApproval: boolean;
+  /**
+   * 운영팀이 대신 넣는 건일 때의 출처·성격. 없으면 고객사가 포털로 넣은 평범한 신청이다.
+   *
+   * 🔴 대리 등록은 **승인 단계를 타지 않는다.** 승인은 고객사가 자기 신청을 올릴 때
+   *    자기 쪽 승인권자에게 받는 절차인데, 우리가 받아 적은 건을 대기(1)에 두면
+   *    고객사 승인권자가 승인해 주기 전까지 아무도 진행시킬 수 없다
+   *    (시드가 같은 실수를 해서 '대기' 8건이 갇혔었다).
+   */
+  intake?: {
+    /** MEDIA — 전화·이메일·내부 */
+    media: string;
+    /** REQTYPE — 고객 문의는 SERVICE, 우리가 발의한 작업은 WORK */
+    reqType: "SERVICE" | "WORK";
+    /**
+     * 등록 시점의 단계. 현업은 **끝난 뒤에 기록하기도 한다** —
+     * 전화로 받아 그 자리에서 처리하고 나중에 적는 경우가 흔해서, 진행 중인 건과
+     * 이미 끝난 건을 그 상태 그대로 만들 수 있어야 한다.
+     *   2 신청(접수 전) · 3 진행 · 4 해결안 제시 · 9 완료
+     */
+    stage: "2" | "3" | "4" | "9";
+    /**
+     * 담당자. 접수 이후 단계(3·4·9)는 담당이 있어야 한다 —
+     * 없으면 그다음 액션이 전부 '담당자만' 조건에 걸려 아무도 손댈 수 없다.
+     */
+    assignTo: string | null;
+    /**
+     * 처리 내용(답변). 4·9 로 등록할 때 채워진다.
+     * 🔴 비면 안 된다 — 그 단계부터 고객 화면은 '처리결과' 탭이 기본으로 열린다.
+     */
+    answer?: string;
+    /** 완료 시각(벽시계). 9 로 등록할 때만. 비우면 지금 */
+    doneAt?: string;
+    /** 실제 작업 시간(h) */
+    workTime?: number | null;
+    /** 담당자 표시명 — 이력 문구가 아이디가 아니라 사람 이름으로 읽히게 */
+    assignToName?: string | null;
+    /** 이력에 남길 출처 문구 ("전화 문의") */
+    sourceLabel: string;
+  };
 }
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -512,8 +557,18 @@ export async function createTicket(
   const at = new Date();
   const now = toDbStamp(at);
   const echoNum = await nextEchoNum(input.custCode, at);
-  // 승인 단계를 쓰는 고객사는 대기(1)에서 승인권자를 기다린다
-  const progress: ProgressCode = input.usesApproval ? "1" : "2";
+  const proxy = input.intake;
+  /**
+   * 승인 단계를 쓰는 고객사는 대기(1)에서 승인권자를 기다린다.
+   * 대리 등록은 그 줄에 세우지 않는다 — 위 intake 주석 참고.
+   */
+  const progress: ProgressCode = proxy
+    ? proxy.stage
+    : input.usesApproval
+      ? "1"
+      : "2";
+  /** 완료로 기록하는 건이면 그 시각이 곧 완료일이다 (안 주면 지금) */
+  const doneAt = progress === "9" ? (proxy?.doneAt ?? now) : null;
 
   const content = sanitize(composeBody(input.symptom, input.content));
 
@@ -521,11 +576,13 @@ export async function createTicket(
     {
       sql: `INSERT INTO NX_OPTREPORTD
               (ECHONUM, CUSTCODE, TITLE, CONTENT, REMARKS, PROGRESS, B1GUBUN, MODULE,
-               REQLEVEL, REQTYPE, CUSTPERSON, REQDATE, SCHEDATE, PUBLICYN, MEDIA,
-               REFMAIL, REREQYN, P_ECHONUM, EXPETIME)
+               REQLEVEL, REQTYPE, CUSTPERSON, SUCCERSON, REQDATE, SCHEDATE, PUBLICYN, MEDIA,
+               REFMAIL, REREQYN, P_ECHONUM, EXPETIME,
+               ANSWER, WORKTIME, SUCCDATE, FINALSUCCER, FINALSUCCDATE)
             VALUES (@echo, @cc, @title, @content, @remarks, @pg, @sys, @module,
-                    @level, 'SERVICE', @person, @reqdate, @sche, @public, '포털',
-                    @refmail, @rereq, @parent, NULL)`,
+                    @level, @reqtype, @person, @assignee, @reqdate, @sche, @public, @media,
+                    @refmail, @rereq, @parent, NULL,
+                    @answer, @worktime, @succdate, @finalsucc, @succdate)`,
       params: [
         { name: "echo", value: echoNum },
         { name: "cc", value: input.custCode },
@@ -537,7 +594,11 @@ export async function createTicket(
         { name: "sys", value: Number(input.systemId) },
         { name: "module", value: input.moduleCode || null },
         { name: "level", value: input.priority || "3" },
+        { name: "reqtype", value: proxy?.reqType ?? "SERVICE" },
+        { name: "media", value: proxy?.media ?? "포털" },
         { name: "person", value: input.requesterId },
+        // 대리 등록에서 담당을 정했으면 접수까지 끝난 셈이라 담당자를 함께 찍는다
+        { name: "assignee", value: proxy?.assignTo ?? null },
         { name: "reqdate", value: now },
         {
           name: "sche",
@@ -547,13 +608,47 @@ export async function createTicket(
         { name: "refmail", value: input.refEmails.join(", ") || null },
         { name: "rereq", value: input.parentEchoNum ? "Y" : "N" },
         { name: "parent", value: input.parentEchoNum },
+        // 처리결과는 저장 시점에도 새니타이즈한다 — 렌더할 때만 거르면 언젠가 새는 경로가 생긴다
+        {
+          name: "answer",
+          value: proxy?.answer?.trim()
+            ? sanitize(toParagraphs(proxy.answer))
+            : null,
+        },
+        { name: "worktime", value: proxy?.workTime ?? null },
+        /**
+         * 완료일이 없으면 '최근 완료' 목록(SUCCDATE 기준)과 보드의 완료 컬럼에서
+         * 통째로 빠진다 — 완료로 만들었는데 어디에도 안 보이는 티켓이 된다.
+         */
+        { name: "succdate", value: doneAt },
+        {
+          name: "finalsucc",
+          value: doneAt ? (proxy?.assignTo ?? user.id) : null,
+        },
       ],
     },
     insertComment({
       echoNum,
       author: user,
-      body:
-        progress === "1"
+      /**
+       * 이력 첫 줄이 **어디서 온 건인지** 말한다. 대리 등록은 포털 기록이 없어서,
+       * 여기 안 남기면 나중에 "이 건 누가 왜 만들었나"를 알 방법이 사라진다.
+       */
+      body: proxy
+        ? `${proxy.sourceLabel}을(를) ${user.name}이(가) 대신 등록했습니다.` +
+          (proxy.assignTo
+            ? ` 담당자는 ${proxy.assignToName ?? proxy.assignTo}입니다.`
+            : "") +
+          /**
+           * 지나간 일을 지금 일어난 것처럼 적지 않는다 — 끝난 뒤에 기록한 건이면
+           * 이력이 그렇게 말해야 나중에 "왜 접수와 완료가 같은 시각인가"에 답할 수 있다.
+           */
+          (progress === "9"
+            ? ` 이미 처리가 끝난 건으로 기록합니다 (완료 ${(doneAt ?? now).slice(0, 10)}).`
+            : progress === "4"
+              ? " 해결안을 제시한 상태로 기록합니다."
+              : "")
+        : progress === "1"
           ? "신청이 등록되어 승인을 기다리고 있습니다."
           : "신청이 접수되었습니다.",
       adminOnly: false,
@@ -568,6 +663,7 @@ export async function createTicket(
       files: input.files ?? [],
       at: now,
     }),
+    ...(input.extra ?? []),
   ]);
 
   return { echoNum, progress };

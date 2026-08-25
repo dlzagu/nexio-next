@@ -688,6 +688,54 @@ export const NOTICES = [
   },
 ];
 
+/**
+ * 정기 업무 템플릿 시드 — 전부 가상이다.
+ *
+ * 왜 시드가 필요한가: 반복 업무는 **비어 있으면 기능이 있는지조차 안 보인다.**
+ * 고객사가 신청하지 않는 업무(백업 점검·세법 패치)가 실제로 어떤 모습인지 보여 준다.
+ * `ownerId` 는 INTERNAL_MEMBERS 의 아이디, `custCode` 는 COMPANIES 의 코드다.
+ */
+export const TASK_TEMPLATES: {
+  custCode: string;
+  title: string;
+  content: string;
+  moduleCode: string;
+  ownerId: string;
+  day: number;
+  /** 이번 달 것을 이미 만들어 둔 것으로 볼지 — 배지 두 상태를 다 보여주려고 나눈다 */
+  ranThisMonth: boolean;
+}[] = [
+  {
+    custCode: "HB001",
+    title: "월 백업 정상 여부 확인",
+    content:
+      "전월 백업 파일 목록과 크기를 확인하고, 복구 테스트 결과를 함께 남깁니다.",
+    moduleCode: "18",
+    ownerId: "sy.kim",
+    day: 3,
+    ranThisMonth: false,
+  },
+  {
+    custCode: "GO001",
+    title: "부가세 신고자료 추출 점검",
+    content:
+      "신고 기간 전에 매입·매출 자료가 정상 추출되는지 확인합니다. 세법 패치가 있으면 함께 적용합니다.",
+    moduleCode: "17",
+    ownerId: "jh.lee",
+    day: 10,
+    ranThisMonth: false,
+  },
+  {
+    custCode: "DN001",
+    title: "월 마감 데이터 정합성 검증",
+    content: "마감 후 재고·원가 집계가 전표와 맞는지 대사합니다.",
+    moduleCode: "3",
+    ownerId: "mj.park",
+    day: 5,
+    ranThisMonth: true,
+  },
+];
+
 export const MEDIA_TYPES = ["포털", "이메일", "전화", "포털", "포털"];
 
 /**

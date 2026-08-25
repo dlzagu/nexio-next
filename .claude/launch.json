@@ -12,7 +12,18 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000,
-      "env": { "ALLOW_DEV_WRITES": "false" }
+      "env": {
+        "ALLOW_DEV_WRITES": "false"
+      }
+    },
+    {
+      "name": "nexio-next-writes",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000,
+      "env": {
+        "ALLOW_DEV_WRITES": "true"
+      }
     }
   ]
 }

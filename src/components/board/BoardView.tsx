@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ChevronRight, GripVertical, MessageSquare } from "lucide-react";
+import { ChevronRight, GripVertical, MessageSquare, Plus } from "lucide-react";
 import { useState } from "react";
+import { TaskSheet } from "@/components/board/TaskSheet";
 import { DetailSheet } from "@/components/requests/DetailSheet";
 import { useUrlState } from "@/components/requests/useUrlState";
 import { Notice } from "@/components/ui/EmptyState";
@@ -14,8 +15,19 @@ import {
   type PriorityCode,
   type ProgressCode,
 } from "@/lib/codes";
+import type { Option } from "@/lib/data/meta";
+import type { TaskTemplate } from "@/lib/data/tasks";
 import { fmtDate } from "@/lib/format";
 import type { CustomerConfig, TicketRow, User } from "@/lib/types";
+
+/** 업무 등록에 필요한 선택지. 운영팀이 아니면 서버가 아예 내려보내지 않는다(null) */
+export interface IntakeData {
+  companies: Option[];
+  requesters: Option[];
+  systems: Option[];
+  templates: TaskTemplate[];
+  ym: string;
+}
 
 type BoardType = "mine" | "all";
 
@@ -36,6 +48,7 @@ export function BoardView({
   configs,
   truncated,
   today,
+  intake,
 }: {
   user: User;
   rows: TicketRow[];
@@ -44,17 +57,24 @@ export function BoardView({
   truncated: boolean;
   /** 서버가 만든 기준일 'YYYY-MM-DD' — D-day 계산이 SSR/CSR 에서 같아야 한다 */
   today: string;
+  /** 업무 등록 선택지. null 이면 이 사용자에게는 등록 자리가 없다 */
+  intake: IntakeData | null;
 }) {
   const router = useRouter();
   const { params, set } = useUrlState();
   const boardType = (params.get("b") ?? "mine") as BoardType;
   const opened = params.get("open");
 
+  const [taskOpen, setTaskOpen] = useState(false);
   const [dragging, setDragging] = useState<TicketRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ text: string; failed: boolean } | null>(
     null,
   );
+
+  const pendingRoutines = (intake?.templates ?? []).filter(
+    (t) => t.pending,
+  ).length;
 
   const isMine = (r: TicketRow) =>
     r.assigneeId === user.id || r.requesterId === user.id;
@@ -120,19 +140,37 @@ export function BoardView({
             카드를 끌어 다음 단계로 옮깁니다
           </p>
         </div>
-        <Segmented<BoardType>
-          ariaLabel="보드 범위"
-          value={boardType}
-          onChange={(v) => set({ b: v })}
-          options={[
-            {
-              value: "mine",
-              label: user.role === "CUSTOMER" ? "내 요청" : "내 업무",
-              count: rows.filter(isMine).length,
-            },
-            { value: "all", label: "전체", count: rows.length },
-          ]}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          {intake ? (
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => setTaskOpen(true)}
+            >
+              <Plus size={14} aria-hidden />
+              업무 등록
+              {/* 이번 달 정기 업무가 남아 있으면 숫자로 말한다 — 안 그리면 아무도 안 누른다 */}
+              {pendingRoutines > 0 ? (
+                <span className="badge badge-warning ml-1">
+                  정기 {pendingRoutines}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
+          <Segmented<BoardType>
+            ariaLabel="보드 범위"
+            value={boardType}
+            onChange={(v) => set({ b: v })}
+            options={[
+              {
+                value: "mine",
+                label: user.role === "CUSTOMER" ? "내 요청" : "내 업무",
+                count: rows.filter(isMine).length,
+              },
+              { value: "all", label: "전체", count: rows.length },
+            ]}
+          />
+        </div>
       </header>
 
       {truncated ? (
@@ -290,6 +328,20 @@ export function BoardView({
 
       {/* 상세는 조회 화면과 같은 시트를 그대로 쓴다 — 두 벌로 만들면 반드시 어긋난다 */}
       <DetailSheet echoNum={opened} onClose={() => set({ open: null })} />
+
+      {intake ? (
+        <TaskSheet
+          open={taskOpen}
+          onOpenChange={setTaskOpen}
+          user={user}
+          companies={intake.companies}
+          requesters={intake.requesters}
+          systems={intake.systems}
+          templates={intake.templates}
+          ym={intake.ym}
+          today={today}
+        />
+      ) : null}
     </div>
   );
 }

@@ -68,6 +68,45 @@ console.log(DRY ? "[미리보기] 쓰지 않습니다\n" : "");
  * 🔴 **전부 확인한 뒤에 쓴다.** 표 하나씩 확인·반영을 번갈아 하면, 뒤쪽 표에서 스키마가
  *    어긋났을 때 앞쪽은 이미 반영된 뒤다 — 딱 "반쪽만 맞춘" 상태로 멈춘다.
  */
+/**
+ * 새로 생긴 **표**는 만들어 준다.
+ *
+ * 컬럼이 늘어난 변경은 행만 얹어서 못 따라가지만(아래에서 멈춘다), 표가 통째로 없는 것은
+ * 다르다 — 로컬은 `SCHEMA_VERSION` 을 보고 다시 만들어지는데 공유 DB 에는 그 장치가 없어,
+ * 새 기능이 배포되는 순간 라이브만 `no such table` 로 500 이 난다.
+ * 내용은 옮기지 않는다(라이브에서 쌓이는 사용자 데이터다). 빈 표를 만들어 줄 뿐이다.
+ *
+ * ⚠️ 이 단계만 아래 "전부 확인한 뒤에 쓴다" 규칙 밖이다 — 표가 없으면 컬럼 대조 자체가
+ *    성립하지 않아 먼저 만들어야 한다. 빈 표 생성은 되돌릴 필요가 없는 작업이라
+ *    중간에 멈춰도 "반쪽만 맞춘" 상태가 되지 않는다.
+ */
+const localObjects = local
+  .prepare(
+    `SELECT type, name, tbl_name, sql FROM sqlite_master
+      WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'`,
+  )
+  .all();
+
+const createdTables = [];
+for (const o of localObjects.filter((x) => x.type === "table")) {
+  if ((await remoteColsOf(o.name)).length > 0) continue;
+  createdTables.push(o.name);
+  if (DRY) continue;
+  const idx = localObjects.filter(
+    (x) => x.type === "index" && x.tbl_name === o.name,
+  );
+  await remote.batch(
+    [{ sql: o.sql }, ...idx.map((x) => ({ sql: x.sql }))],
+    "write",
+  );
+}
+if (createdTables.length) {
+  console.log(
+    `  ${DRY ? "만들 표" : "새 표 생성"}: ${createdTables.join(", ")}
+`,
+  );
+}
+
 const plan = [];
 let drift = false;
 
@@ -76,6 +115,8 @@ for (const { table, key } of MASTER) {
   const rcols = await remoteColsOf(table);
 
   if (rcols.length === 0) {
+    // 위에서 만들었으면 여기 오지 않는다. 그래도 왔다면 미리보기(--dry)라 아직 안 만든 것이다
+    if (DRY && createdTables.includes(table)) continue;
     console.log(`  ${table}: 원격에 표가 없습니다 → 전체 재시드 필요`);
     drift = true;
     continue;

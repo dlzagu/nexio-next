@@ -74,6 +74,21 @@ export function canMove(
   return canDo(action, ticket, user, config) ? action : null;
 }
 
+/**
+ * 방금 등록한 건을 **실제로 볼 수 있는** 목록.
+ *
+ * 목록 뷰마다 조건이 다르다 — '진행 중'(open)은 종료건을 빼고, '내 담당'(mine)은
+ * `신청자 = 나 OR 담당자 = 나` 만 담는다. 접수 전(2)으로 등록하면 담당이 없고
+ * 신청자는 고객사 사람이라 **어느 쪽 조건에도 안 걸려** 목록이 0건으로 보인다
+ * (상세 시트만 열리고 뒤가 비어 있어 저장이 안 된 것처럼 읽힌다).
+ */
+export function listViewForStage(stage: string): "open" | "mine" {
+  // 접수 전은 담당이 없다 → 미완료 목록에서 찾는다
+  if (stage === "2") return "open";
+  // 완료(9)는 미완료 목록에서 빠지지만 담당이 나라서 '내 담당'에는 있다
+  return "mine";
+}
+
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**

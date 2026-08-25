@@ -106,6 +106,29 @@ export const REQ_TYPE = {
   MIGRATION: "이관 데이터",
 } as const;
 
+/**
+ * 대리 등록(운영팀이 대신 넣는 건)의 출처.
+ *
+ * 포털은 고객사가 스스로 넣은 건이다. 그런데 실제로는 전화·메일로 오거나,
+ * 아예 고객사가 발의하지 않는 업무(정기 백업 확인·부가세 패치)가 있다.
+ * 그런 건이 포털로 들어온 것처럼 남으면 **어디서 온 요청인지 영원히 알 수 없다.**
+ *
+ * 두 축을 한 번에 정한다 — `media` 는 접수 경로(MEDIA, 레거시 자유값),
+ * `reqType` 은 요청 성격(REQTYPE)이다. 고객이 물어본 건은 SERVICE,
+ * 우리가 발의한 작업은 WORK — 원본 실측에도 WORK 가 147건 있었다.
+ */
+export const INTAKE = {
+  phone: { label: "전화 문의", media: "전화", reqType: "SERVICE" },
+  email: { label: "메일 문의", media: "이메일", reqType: "SERVICE" },
+  routine: { label: "정기 작업", media: "내부", reqType: "WORK" },
+  patch: { label: "패치·업데이트", media: "내부", reqType: "WORK" },
+  other: { label: "기타", media: "내부", reqType: "WORK" },
+} as const;
+
+export type IntakeKind = keyof typeof INTAKE;
+
+export const INTAKE_KINDS = Object.keys(INTAKE) as IntakeKind[];
+
 /** COMMON_CODE UPPER_CD='B0001' — MEMBER_MST.USER_TYPE */
 export const USER_TYPE = {
   B0001_01: "INTERNAL",
