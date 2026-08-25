@@ -158,6 +158,12 @@ for (const shot of SHOTS) {
   // 차트·전환 애니메이션이 멎을 때까지
   await page.waitForTimeout(900);
 
+  /* 개발 서버를 찍는 것이라 Next 의 개발 배지가 같이 담긴다 — 좌하단에 떠서
+     하필 사이드바의 사용자 블록을 가린다(실측: 아바타·이름이 배지에 깔렸다).
+     README 를 보는 사람에게 그건 우리 화면이 깨진 것으로 보인다.
+     `before` 에서 다시 이동하는 샷이 있어 주입은 **찍기 직전**에 한다. */
+  await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+
   const file = path.join(OUT, `${shot.name}.png`);
   await page.screenshot({ path: file });
   console.log("찍음:", path.relative(process.cwd(), file));
