@@ -121,6 +121,16 @@ try {
   if (html.includes("데모 DB 를 열 수 없습니다")) {
     fail("/dashboard 가 200 이지만 DB 오류 화면입니다");
   }
+
+  // 없는 경로는 404 + **우리 한국어 화면**이어야 한다 — not-found.tsx 가 빠지면 Next 기본의
+  // 영어 "This page could not be found." 가 앱 셸 없이 뜬다(점검 실측). MVP 는 한국어 전용이다.
+  const missing = await fetch(BASE + "/__nx-smoke-404");
+  const missingHtml = await missing.text();
+  if (missing.status !== 404)
+    fail(`없는 경로 → ${missing.status} (404 여야 한다)`);
+  else if (!missingHtml.includes("페이지를 찾을 수 없습니다")) {
+    fail("없는 경로가 404 이지만 한국어 안내 화면이 아닙니다");
+  } else console.log("  ✓ 없는 경로 → 404 (한국어 안내)");
 } catch (e) {
   fail(e instanceof Error ? e.message : String(e));
 } finally {

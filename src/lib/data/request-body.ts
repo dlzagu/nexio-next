@@ -10,13 +10,30 @@ import { htmlToPlain } from "../format";
 const SYMPTOM_LABEL = "증상";
 const CONTENT_LABEL = "요청내용";
 
-/** 줄바꿈을 문단으로. 저장 포맷이 HTML 이라 평문을 그대로 넣으면 한 줄로 붙는다 */
+/** 평문 한 줄을 HTML 글자로. 꺾쇠·앰퍼샌드·따옴표가 **태그가 아니라 글자**가 되게 한다 */
+function escapeText(line: string): string {
+  return line
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * 평문 → 문단 HTML. **평문 입력칸(textarea)·사유의 유일한 변환 경로**다.
+ * 줄바꿈을 문단으로 바꾼다 — 저장 포맷이 HTML 이라 평문을 그대로 넣으면 한 줄로 붙는다.
+ *
+ * 🔴 먼저 이스케이프한다. 그대로 감싸면 새니타이저가 평문을 HTML 로 읽어서
+ *    `List<string>` → `List`, `DocTotal<>0` → `DocTotal0` 처럼 **코드·SQL 이 조용히 잘리고**,
+ *    반대로 평문 칸에 적은 `<img src=…>` 는 살아서 렌더된다.
+ *    ⚠️ 이미 HTML 인 값(서식 편집기·정기 업무 템플릿 본문)을 여기 넣으면 태그가 글자로 보인다.
+ */
 export function toParagraphs(text: string): string {
   return text
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean)
-    .map((l) => `<p>${l}</p>`)
+    .map((l) => `<p>${escapeText(l)}</p>`)
     .join("");
 }
 

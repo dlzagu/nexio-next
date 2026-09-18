@@ -1,9 +1,53 @@
 import { z } from "zod";
-import { MAX_FILES, MAX_FILE_BYTES } from "./attachments";
-import { todaySeoul } from "./format";
+import { MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES } from "./attachments";
+import { josa, todaySeoul } from "./format";
+import type { TicketAction } from "./types";
 
 /** 오늘(벽시계). UTC 로 재면 밤에 하루가 밀려 어제 끝낸 일이 "미래"가 된다 */
 const todayWallClock = () => todaySeoul();
+
+/**
+ * 쓰기 본문의 길이 상한 — 화면과 라우트가 **같은 값**을 본다.
+ *
+ * 🔴 상한이 없으면 한 요청에 수 MB 짜리 글이 그대로 쌓이고, 목록·알림 미리보기가 그 행을
+ *    읽을 때마다 느려진다(공유 DB 는 무료 티어 한도에 먼저 닿는다). 예전엔 댓글 한도(4000)를
+ *    정의만 해 두고 실제 전송 스키마에는 걸지 않아 **죽은 규칙**이었다.
+ *
+ * 서식 편집기에서 오는 칸(댓글·처리내역)은 **보이는 글자** 기준으로 센다 — 문단마다
+ * `<p></p>` 가 붙어 원문 길이로 세면 로그 몇십 줄만 붙여도 한도에 걸린다. 대신 태그까지 포함한
+ * 원문도 RICH_MARKUP_RATIO 배까지만 받는다(태그로 부풀린 본문을 막는 바깥 울타리).
+ */
+export const TEXT_LIMITS = {
+  /** 댓글 — 보이는 글자 */
+  comment: 4000,
+  /** 처리내역 각 항목(원인·답변 …) — 보이는 글자 */
+  solution: 20000,
+  /** 신청 증상·요청내용, 업무 내용·처리 내용 — 평문 */
+  body: 20000,
+  /** 반려·계속 진행·취소 권유 사유 — 평문 */
+  reason: 1000,
+} as const;
+const RICH_MARKUP_RATIO = 4;
+
+/** 서식 태그를 걷어낸 글자 수 — 사용자가 화면에서 보는 길이 */
+const visibleLength = (html: string) => html.replace(/<[^>]*>/g, "").length;
+
+const limitMessage = (label: string, limit: number) =>
+  `${josa(label, "은/는")} ${limit.toLocaleString("ko-KR")}자까지 입력할 수 있습니다`;
+
+/** 서식 편집기에서 오는 HTML 칸 */
+const richText = (label: string, limit: number) =>
+  z
+    .string()
+    .max(
+      limit * RICH_MARKUP_RATIO,
+      `${label}의 서식이 너무 깁니다 — 붙여 넣은 서식을 줄여 주세요`,
+    )
+    .refine((v) => visibleLength(v) <= limit, limitMessage(label, limit));
+
+/** 평문 칸 */
+const plainText = (label: string, limit: number) =>
+  z.string().max(limit, limitMessage(label, limit));
 
 /**
  * 날짜 칸의 형식. 🔴 정규식 없이 문자열 비교만 하면 `2026-08-01T00:00:00Z` 같은 값이
@@ -49,8 +93,11 @@ export const requestFormSchema = z.object({
     .string()
     .min(1, "제목을 입력해 주세요")
     .max(150, "제목은 150자까지 입력할 수 있습니다"),
-  symptom: z.string().min(1, "증상을 입력해 주세요"),
-  content: z.string().min(1, "요청내용을 입력해 주세요"),
+  symptom: plainText("증상", TEXT_LIMITS.body).min(1, "증상을 입력해 주세요"),
+  content: plainText("요청내용", TEXT_LIMITS.body).min(
+    1,
+    "요청내용을 입력해 주세요",
+  ),
 
   moduleCode: z.string().optional().default(""),
   priority: z.string().optional().default("3"),
@@ -93,30 +140,32 @@ export const attachmentInputSchema = z.object({
 export const attachmentsInputSchema = z
   .array(attachmentInputSchema)
   .max(MAX_FILES)
+  // 합계도 인코딩된 길이로 먼저 자른다 — 디코드해서 재기 전에 본문을 통째로 올리지 않게
+  // (최종 판정은 서버가 디코드한 실제 바이트로 다시 한다: validateUploads)
+  .refine(
+    (files) =>
+      files.reduce((n, f) => n + f.data.length, 0) <=
+      Math.ceil(MAX_TOTAL_BYTES * 1.4),
+    "첨부 합계가 너무 큽니다",
+  )
   .optional()
   .default([]);
 
 export type AttachmentInput = z.output<typeof attachmentInputSchema>;
 
-export const commentSchema = z.object({
-  echoNum: z.string().min(1),
-  body: z.string().min(1, "댓글 내용을 입력해 주세요").max(4000),
-  adminOnly: z.boolean().default(false),
-});
-
 /** 처리결과 편집 폼의 전송 형태. 시간은 빈 문자열 허용(미입력) */
 export const solutionPatchSchema = z.object({
-  cause: z.string().default(""),
-  process: z.string().default(""),
-  improvement: z.string().default(""),
-  answer: z.string().default(""),
-  result: z.string().default(""),
-  devReason: z.string().default(""),
-  devContent: z.string().default(""),
-  expeTime: z.string().default(""),
-  workTime: z.string().default(""),
-  rWorkTime: z.string().default(""),
-  surTime: z.string().default(""),
+  cause: richText("원인", TEXT_LIMITS.solution).default(""),
+  process: richText("해결 과정", TEXT_LIMITS.solution).default(""),
+  improvement: richText("개선 사항", TEXT_LIMITS.solution).default(""),
+  answer: richText("답변", TEXT_LIMITS.solution).default(""),
+  result: richText("결과", TEXT_LIMITS.solution).default(""),
+  devReason: richText("개발 사유", TEXT_LIMITS.solution).default(""),
+  devContent: richText("개발 내용", TEXT_LIMITS.solution).default(""),
+  expeTime: z.string().max(20).default(""),
+  workTime: z.string().max(20).default(""),
+  rWorkTime: z.string().max(20).default(""),
+  surTime: z.string().max(20).default(""),
 });
 
 export type SolutionPatch = z.output<typeof solutionPatchSchema>;
@@ -149,16 +198,23 @@ export const actionSchema = z.object({
   solution: solutionPatchSchema.optional(),
   comment: z
     .object({
-      body: z.string().default(""),
+      body: richText("댓글", TEXT_LIMITS.comment).default(""),
       adminOnly: z.boolean().default(false),
       attachments: attachmentsInputSchema,
     })
     .optional(),
+  /**
+   * 🔴 TicketAction 과 **같은 목록**이어야 한다. 취소요청(10)의 두 출구(cancelApprove·
+   *    cancelDeny)가 빠져 있어, 전이표·canDo·보드는 다 준비돼 있는데 라우트만 400 을 돌려
+   *    '취소 승인'·'계속 진행' 버튼이 눌러도 안 되는 버튼이었다.
+   */
   action: z.enum([
     "approve",
     "reject",
     "cancel",
     "cancelRequest",
+    "cancelApprove",
+    "cancelDeny",
     "suggestCancel",
     "receive",
     "save",
@@ -168,8 +224,22 @@ export const actionSchema = z.object({
     "reapply",
     "comment",
   ]),
-  reason: z.string().optional().default(""),
+  reason: plainText("사유", TEXT_LIMITS.reason).optional().default(""),
 });
+
+/** 🔒 액션 목록이 TicketAction 과 어긋나면 **컴파일이 깨진다** — 위 누락의 재발 방지 */
+const actionListCoversAll: [
+  Exclude<TicketAction, z.output<typeof actionSchema>["action"]>,
+] extends [never]
+  ? true
+  : never = true;
+void actionListCoversAll;
+
+/** 알림 읽음 처리. 본문이 없으면 '모두 읽음'이다 */
+export const notificationReadSchema = z
+  .object({ echoNum: z.string().trim().min(1).max(40).optional() })
+  .nullable()
+  .transform((v): { echoNum?: string } => v ?? {});
 
 /** 고객사 등록 폼 — 화면과 라우트가 같은 스키마를 본다 */
 export const newCustomerSchema = z.object({
@@ -205,7 +275,10 @@ export const taskIntakeSchema = z
       .string()
       .min(1, "제목을 입력해 주세요")
       .max(150, "제목은 150자까지 입력할 수 있습니다"),
-    content: z.string().min(1, "업무 내용을 입력해 주세요"),
+    content: plainText("업무 내용", TEXT_LIMITS.body).min(
+      1,
+      "업무 내용을 입력해 주세요",
+    ),
     /** 비우면 등록한 사람이 신청자가 된다 (고객사가 발의하지 않은 업무) */
     requesterId: z.string().optional().default(""),
     moduleCode: z.string().optional().default(""),
@@ -223,7 +296,7 @@ export const taskIntakeSchema = z
      * 그 단계부터 고객 화면은 '처리결과' 탭이 기본으로 열리는데, 비어 있으면 빈 화면이 뜬다
      * (전이표의 requires 와 같은 규칙 — 상태만 바꾸는 전이는 허용하지 않는다).
      */
-    answer: z.string().optional().default(""),
+    answer: plainText("처리 내용", TEXT_LIMITS.body).optional().default(""),
     /** 완료일. 비우면 오늘. 이미 끝난 건을 나중에 적는 경우가 있어 과거를 받는다 */
     doneDate: z.string().optional().default(""),
     /** 실제 작업 시간(h). 선택 */

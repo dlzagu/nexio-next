@@ -20,6 +20,7 @@ import {
   Underline as UnderlineIcon,
   Undo2,
 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/cn";
 import { sanitize } from "@/lib/sanitize";
 
@@ -33,6 +34,10 @@ import { sanitize } from "@/lib/sanitize";
  *     (`&lt;div&gt;`), 그대로 넣으면 태그가 글자로 보인다. sanitize() 가 풀고 걸러 준다.
  *  2. **붙여넣은 이미지는 막는다** — 외부(메일/웹)에서 복사한 이미지는 서버에 저장되지 않는다.
  *     원본은 저장 버튼을 누른 뒤에야 알려줬다 → 붙여넣기 시점에 즉시 알린다.
+ *  3. **부모가 값을 바꾸면 따라간다** — Tiptap 은 content 를 생성 때 한 번만 읽는다.
+ *     그대로 두면 댓글을 등록해 부모가 초안을 비워도 입력창에 방금 쓴 글이 남고,
+ *     이어 쓰면 **앞 글까지 다시 등록**된다(실측). 내가 방금 올려 보낸 값이 되돌아온
+ *     것이면 건드리지 않는다 — 타이핑마다 다시 채우면 커서가 튄다.
  */
 export function RichEditor({
   value,
@@ -43,6 +48,7 @@ export function RichEditor({
   onImagePaste,
   ariaLabel,
   className,
+  focusKey = 0,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -52,7 +58,11 @@ export function RichEditor({
   onImagePaste?: () => void;
   ariaLabel?: string;
   className?: string;
+  /** 값이 바뀔 때마다 끝으로 커서를 옮겨 포커스한다 (0 = 요청 없음) */
+  focusKey?: number;
 }) {
+  /** 에디터가 마지막으로 올려 보낸 값 — 되돌아온 값인지 가려낸다 */
+  const emitted = useRef(value);
   const editor = useEditor({
     // SSR 에서 즉시 렌더하면 하이드레이션이 어긋난다 — Tiptap 공식 권장 옵션
     immediatelyRender: false,
@@ -85,8 +95,32 @@ export function RichEditor({
         return false;
       },
     },
-    onUpdate: ({ editor: e }) => onChange(e.getHTML()),
+    onUpdate: ({ editor: e }) => {
+      const html = e.getHTML();
+      emitted.current = html;
+      onChange(html);
+    },
   });
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || value === emitted.current) return;
+    emitted.current = value;
+    // 바깥에서 바꾼 값이라 다시 올려 보내지 않는다 (초안이 '변경 있음'으로 되살아나지 않게).
+    // 실행 취소 이력에도 넣지 않는다 — 넣으면 비운 입력창에서 '실행 취소' 한 번에 방금 등록한
+    // 글이 되살아나 다시 등록할 수 있게 된다(리뷰 재현)
+    editor
+      .chain()
+      .setMeta("addToHistory", false)
+      .setContent(sanitize(value), { emitUpdate: false })
+      .run();
+  }, [editor, value]);
+
+  // ⚠️ 값 동기화 effect **뒤에** 둔다 — 부모가 초안을 채우며 포커스를 요청하면
+  //    채운 글의 끝에 커서가 놓여야 한다(같은 커밋에서 선언 순서대로 돈다).
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !focusKey) return;
+    editor.commands.focus("end");
+  }, [editor, focusKey]);
 
   if (!editor) {
     // immediatelyRender:false 라 첫 렌더에는 editor 가 없다 → 자리만 잡아 레이아웃이 튀지 않게

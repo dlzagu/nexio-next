@@ -21,7 +21,9 @@ import {
   type SeedCompany,
   type SeedMember,
 } from "./corpus";
+import { seedAnchor } from "./clock";
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema";
+import { seoulWallDate } from "../format";
 
 type DB = InstanceType<typeof Database>;
 
@@ -166,7 +168,9 @@ export function ensureSeed(db: DB): void {
   }
   db.exec(SCHEMA_SQL);
   db.prepare("INSERT INTO NX_SCHEMA (VERSION) VALUES (?)").run(SCHEMA_VERSION);
-  seed(db);
+  const anchor = seed(db);
+  // 이 세계가 '언제를 오늘로 보고' 만들어졌는지 — 달력이 넘어가면 이만큼 민다 (ADR-0012)
+  db.prepare("INSERT INTO NX_DEMO_CLOCK (ANCHOR) VALUES (?)").run(anchor);
   const total = (
     db.prepare("SELECT COUNT(*) AS n FROM NX_OPTREPORTD").get() as {
       n: number;
@@ -177,13 +181,18 @@ export function ensureSeed(db: DB): void {
   );
 }
 
-function seed(db: DB): void {
+/** @returns 데모 시계의 기준 시각(시드를 만든 날의 끝) */
+function seed(db: DB): string {
   const rnd = mulberry32(0x20260814);
   const pick = <T>(arr: readonly T[]): T => arr[Math.floor(rnd() * arr.length)];
   const int = (min: number, max: number) =>
     min + Math.floor(rnd() * (max - min + 1));
   const chance = (p: number) => rnd() < p;
-  const now = new Date();
+  /**
+   * 한국 벽시계 기준의 '지금' — 새로 쓰는 행(toDbStamp)과 같은 시계다.
+   * 서버 로컬 시각을 쓰면 Vercel(UTC)의 메모리 시드만 9시간 이르게 만들어진다.
+   */
+  const now = seoulWallDate();
 
   /** n일 전, 업무시간대의 시각 */
   const daysAgo = (n: number): Date => {
@@ -307,7 +316,7 @@ function seed(db: DB): void {
         DAY_OF_MONTH, ACTIVE, LAST_RUN_YM, REG_DT)
      VALUES (?,?,?,?,?,'3','내부',?,?,'Y',?,?)`,
   );
-  const thisYm = fmtDT(new Date()).slice(0, 7);
+  const thisYm = fmtDT(now).slice(0, 7);
   for (const t of TASK_TEMPLATES) {
     const company = COMPANIES.find((c) => c.code === t.custCode);
     if (!company) continue;
@@ -624,50 +633,111 @@ function seed(db: DB): void {
     const at = (frac: number) =>
       fmtDT(new Date(reqTime + span * Math.min(frac, 1)));
 
-    // 상태 전이 로그 (IS_LOG_YN='Y') — 취소·반려는 신청(2) 또는 진행(3)에서 끊긴다
-    const passed =
-      progress === "11" || progress === "12"
-        ? chance(0.5)
-          ? ["2", progress]
-          : ["2", "3", progress]
-        : ["2", "3", "4", "9"].filter((p) => Number(p) <= Number(progress));
-    let frac = 0.05;
-    for (const p of passed) {
-      if (!chance(0.8)) continue;
-      rows.push({
-        PECHONUM: echo,
-        USERID: p === "2" ? requesterId : (assigneeId ?? requesterId),
-        COMMENT: PROGRESS_LOG_LABEL[p] ?? "상태가 변경되었습니다.",
-        COMMDATE: at(frac),
-        ADMIN_ONLY_YN: "N",
-        IS_LOG_YN: "Y",
-        PPROGRESS: p,
-      });
-      frac += 0.15;
-    }
+    /**
+     * 스레드는 **대화의 순서대로** 세운 뒤 그 순서대로 시각을 매긴다.
+     * 예전엔 상태 로그를 먼저 다 찍고 사람 말을 아무 말뭉치에서나 뽑아 뒤에 붙여서,
+     * '처리가 완료되었습니다' 다음에 '접수 확인했습니다'가, 그 앞에 '종결해 주세요'가 왔다.
+     *
+     * 상태 로그(IS_LOG_YN='Y') — 취소·반려는 신청(2) 또는 진행(3)에서 끊긴다.
+     */
+    const cut = progress === "11" || progress === "12";
+    const passed = cut
+      ? chance(0.5)
+        ? ["2", progress]
+        : ["2", "3", progress]
+      : ["2", "3", "4", "9"].filter((p) => Number(p) <= Number(progress));
 
+    type Who = "req" | "eng";
+    type Phase = "pre" | "work" | "done";
+    /** 상태별 대화 대본 — 앞에서부터 사람 댓글 수만큼 쓴다. 해결안 전에는 '종결' 말이 없다 */
+    const script: [Phase, Who, readonly string[]][] =
+      progress === "1" || progress === "2"
+        ? [
+            ["pre", "req", REQUESTER_COMMENTS.during],
+            ["pre", "eng", ENGINEER_COMMENTS.opening],
+            ["pre", "req", REQUESTER_COMMENTS.during],
+            ["pre", "eng", ENGINEER_COMMENTS.during],
+          ]
+        : progress === "3" || progress === "10"
+          ? [
+              ["work", "eng", ENGINEER_COMMENTS.opening],
+              ["work", "req", REQUESTER_COMMENTS.during],
+              ["work", "eng", ENGINEER_COMMENTS.during],
+              ["work", "req", REQUESTER_COMMENTS.during],
+            ]
+          : cut
+            ? [
+                ["pre", "req", REQUESTER_COMMENTS.during],
+                ["work", "eng", ENGINEER_COMMENTS.opening],
+                ["work", "req", REQUESTER_COMMENTS.during],
+              ]
+            : [
+                // 4·5·6·9 — 해결안 이후에만 확인·종결 인사가 온다
+                ["work", "eng", ENGINEER_COMMENTS.opening],
+                ["done", "eng", ENGINEER_COMMENTS.closing],
+                ["done", "req", REQUESTER_COMMENTS.closing],
+                ["work", "req", REQUESTER_COMMENTS.during],
+              ];
     // 사람 댓글 — 진행 중 건일수록 많다
     const isOpen = !["9", "11", "12"].includes(progress);
-    const humanCount = isOpen ? int(1, 4) : int(0, 3);
-    for (let i = 0; i < humanCount; i++) {
-      const fromRequester = i % 2 === 0;
-      const authorId = fromRequester
-        ? requesterId
-        : (assigneeId ?? pick(INTERNAL_MEMBERS).id);
-      const adminOnly = !fromRequester && chance(0.15);
-      rows.push({
-        PECHONUM: echo,
-        USERID: authorId,
-        COMMENT: esc(
-          `<p>${adminOnly ? pick(ADMIN_COMMENTS) : fromRequester ? pick(REQUESTER_COMMENTS) : pick(ENGINEER_COMMENTS)}</p>`,
-        ),
-        COMMDATE: at(frac),
-        ADMIN_ONLY_YN: adminOnly ? "Y" : "N",
-        IS_LOG_YN: "N",
-        PPROGRESS: null,
-      });
-      frac += 0.12;
-    }
+    const humanCount = Math.min(isOpen ? int(1, 4) : int(0, 3), script.length);
+    const spoken = script.slice(0, humanCount);
+    // 담당이 없으면(접수 전) 운영팀 누군가가 답한다 — 한 스레드 안에서는 같은 사람이다
+    const engineerId = assigneeId ?? pick(INTERNAL_MEMBERS).id;
+
+    type Beat =
+      | { kind: "log"; p: string }
+      | { kind: "human"; who: Who; text: string; adminOnly: boolean };
+    const beats: Beat[] = [];
+    const logIf = (p: string) => {
+      if (passed.includes(p) && chance(0.8)) beats.push({ kind: "log", p });
+    };
+    const speak = (phase: Phase) => {
+      for (const [ph, who, pool] of spoken) {
+        if (ph !== phase) continue;
+        const adminOnly = who === "eng" && chance(0.15);
+        beats.push({
+          kind: "human",
+          who,
+          text: adminOnly ? pick(ADMIN_COMMENTS) : pick(pool),
+          adminOnly,
+        });
+      }
+    };
+    logIf("2");
+    speak("pre");
+    logIf("3");
+    speak("work");
+    logIf("4");
+    speak("done");
+    logIf("9");
+    if (cut) logIf(progress);
+
+    beats.forEach((b, i) => {
+      // 순서를 지키는 간격 + 약간의 흔들림 — 같은 시각에 두 줄이 겹치지 않게
+      const frac = 0.05 + (0.9 * (i + 0.6 * rnd())) / beats.length;
+      rows.push(
+        b.kind === "log"
+          ? {
+              PECHONUM: echo,
+              USERID: b.p === "2" ? requesterId : (assigneeId ?? requesterId),
+              COMMENT: PROGRESS_LOG_LABEL[b.p] ?? "상태가 변경되었습니다.",
+              COMMDATE: at(frac),
+              ADMIN_ONLY_YN: "N",
+              IS_LOG_YN: "Y",
+              PPROGRESS: b.p,
+            }
+          : {
+              PECHONUM: echo,
+              USERID: b.who === "req" ? requesterId : engineerId,
+              COMMENT: esc(`<p>${b.text}</p>`),
+              COMMDATE: at(frac),
+              ADMIN_ONLY_YN: b.adminOnly ? "Y" : "N",
+              IS_LOG_YN: "N",
+              PPROGRESS: null,
+            },
+      );
+    });
 
     let lastId = 0;
     for (const row of rows) {
@@ -714,4 +784,6 @@ function seed(db: DB): void {
       );
     }
   }
+
+  return seedAnchor(fmtDT(now));
 }

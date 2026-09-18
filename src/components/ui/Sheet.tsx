@@ -2,6 +2,7 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { Maximize2, Minimize2, X } from "lucide-react";
+import { useRef } from "react";
 import { cn } from "@/lib/cn";
 import { usePref } from "@/lib/usePref";
 
@@ -23,6 +24,58 @@ const NEXT: Record<SheetWidth, SheetWidth> = {
   lg: "full",
   full: "md",
 };
+
+/**
+ * 연 요소가 다시 그려져 DOM 에서 빠졌으면, 같은 표식(`data-focus-id`)을 단 새 요소를 찾는다.
+ * 목록 행처럼 갱신 때 노드가 바뀔 수 있는 트리거는 이 표식을 달아 두면 된다.
+ */
+export function returnTarget(el: HTMLElement | null): HTMLElement | null {
+  if (!el) return null;
+  if (el.isConnected) return el;
+  const id = el.dataset.focusId;
+  if (!id) return null;
+  return (
+    Array.from(document.querySelectorAll<HTMLElement>("[data-focus-id]")).find(
+      (x) => x.dataset.focusId === id,
+    ) ?? null
+  );
+}
+
+/**
+ * 닫으면 포커스를 **연 요소**로 돌려준다 (WCAG 2.4.3 포커스 순서).
+ *
+ * 🔴 Radix 는 `Dialog.Trigger` 로 열었을 때만 트리거로 돌려준다 — 닫힐 때 기본 동작을 막고
+ *    `triggerRef` 에 포커스를 주는데, 우리는 전부 `open` prop 으로 열어서 그 ref 가 비어 있다.
+ *    그래서 포커스가 body 로 떨어졌고, 목록 40번째 행에서 Esc 로 닫으면 Tab 이 상단바부터
+ *    다시 시작했다. 열리는 순간(`onOpenAutoFocus` — 아직 포커스를 안쪽으로 옮기기 전)에
+ *    붙잡아 두었다가 닫힐 때 돌려준다.
+ */
+function useReturnFocus() {
+  const opener = useRef<HTMLElement | null>(null);
+  return {
+    onOpenAutoFocus: () => {
+      const el = document.activeElement;
+      opener.current =
+        el instanceof HTMLElement && el !== document.body ? el : null;
+    },
+    onCloseAutoFocus: (e: Event) => {
+      const el = returnTarget(opener.current) ?? dialogBelow();
+      opener.current = null;
+      if (!el) return; // 돌려줄 곳이 없으면 Radix 기본 동작에 맡긴다
+      e.preventDefault();
+      el.focus();
+    },
+  };
+}
+
+/**
+ * 시트 위에 띄운 모달이 닫혔는데 연 버튼이 사라졌으면(액션 뒤 버튼 목록이 바뀐다) 아래 시트로.
+ * 닫힌 쪽은 이 시점에 이미 DOM 에서 빠져 있어 남은 것 중 맨 위가 곧 '아래'다.
+ */
+function dialogBelow(): HTMLElement | null {
+  const open = document.querySelectorAll<HTMLElement>('[role="dialog"]');
+  return open.length ? open[open.length - 1] : null;
+}
 
 /**
  * 우측 슬라이드 시트. 목록 위에 덮으므로 목록의 스크롤·필터가 유지된다 (P3).
@@ -63,6 +116,7 @@ export function Sheet({
   widthKey?: string;
 }) {
   const [width, setWidth] = usePref<SheetWidth>(widthKey, "md", SHEET_WIDTHS);
+  const returnFocus = useReturnFocus();
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -72,6 +126,7 @@ export function Sheet({
           className={cn("sheet", className)}
           data-width={width}
           aria-describedby={undefined}
+          {...returnFocus}
         >
           <div className="border-line-subtle flex items-start justify-between gap-3 border-b px-5 py-4">
             <div className="min-w-0 flex-1">
@@ -165,11 +220,12 @@ export function Modal({
   footer?: React.ReactNode;
   children?: React.ReactNode;
 }) {
+  const returnFocus = useReturnFocus();
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="ovl" />
-        <Dialog.Content className="modal">
+        <Dialog.Content className="modal" {...returnFocus}>
           <div className="px-5 pt-5">
             <Dialog.Title className="text-15 text-fg-strong font-semibold">
               {title}

@@ -320,6 +320,14 @@ describe("cancelHint — 왜 취소가 안 되는지 설명한다", () => {
     expect(hint).toContain("고객담당");
   });
 
+  it("신청자도 취소할 수 없는 단계에서는 신청자를 가리키지 않는다", () => {
+    // 해결안 제시(4)에서 "신청자만 취소할 수 있다"고 하면 신청자에게 물어보라는 뜻이 되는데,
+    // 신청자도 못 한다 (Aside 점검에서 승인권자 화면으로 재현)
+    const hint = cancelHint(ticket({ progress: "4" }), user({ id: "cust2" }));
+    expect(hint).not.toContain("고객담당");
+    expect(hint).toContain("해결안이 제시된 뒤에는");
+  });
+
   it("종료건은 재신청을 안내한다", () => {
     const hint = cancelHint(ticket({ progress: "11" }), user());
     expect(hint).toContain("재신청");

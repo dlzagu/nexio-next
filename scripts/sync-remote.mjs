@@ -28,6 +28,23 @@ const MASTER = [
   { table: "MEMBER_MST", key: "MBER_ID" },
 ];
 
+/**
+ * 문구만 시드를 따르는 행. **보이는 공지만** 시드 소유다 — 같은 표에 고객사 관리가 숨김 이력 행
+ * (DELETE_FG='Y')을 쓰는데, 그 행은 라이브가 정본이고 번호(MAX+1)가 로컬과 겹친다. 번호만 보고
+ * 맞추면 라이브의 관리 이력이 로컬 문구로 **덮인다**(리뷰 재현). 양쪽 모두 보이는 행만 읽는다.
+ * **등록일(REG_DT)은 건드리지 않는다** — 데모 시계(ADR-0012)가 기준 시각을 역산하는 증인이고,
+ * 라이브에서는 시계가 그 날짜를 날마다 민다. 여기서 로컬 날짜로 덮으면 세계가 엉뚱한 날로 간다.
+ * (예: 시드 문구에서 달력 날짜를 뺀 변경 — "8월 정기 점검 (8/20)"이 9월에 등록된 공지로 보였다)
+ */
+const TEXT_ONLY = [
+  {
+    table: "BOARD_DETAIL",
+    key: "NTT_ID",
+    cols: ["NTT_SJ", "NTT_CN"],
+    where: "COALESCE(DELETE_FG,'N') <> 'Y' AND COALESCE(USE_FG,'Y') = 'Y'",
+  },
+];
+
 const DRY = process.argv.includes("--dry");
 const LOCAL =
   process.env.SQLITE_PATH ?? path.join(process.cwd(), ".data", "nexio.db");
@@ -142,6 +159,36 @@ for (const { table, key } of MASTER) {
   plan.push({ table, key, cols, rows, added });
 }
 
+/** 문구만 맞출 행 — 확인은 여기서 끝내고 쓰기는 아래에서 한꺼번에 (반쪽 반영 금지) */
+const textPlan = [];
+for (const { table, key, cols, where } of TEXT_ONLY) {
+  const rcols = await remoteColsOf(table);
+  const missing = [key, ...cols, "DELETE_FG", "USE_FG"].filter(
+    (c) => !rcols.includes(c),
+  );
+  if (rcols.length && missing.length) {
+    console.log(
+      `  ${table}: 원격에 없는 컬럼 ${missing.join(", ")} → 전체 재시드 필요`,
+    );
+    drift = true;
+    continue;
+  }
+  const pick = `SELECT ${[key, ...cols].join(",")} FROM ${table} WHERE ${where}`;
+  const rows = local.prepare(pick).all();
+  const rs = rcols.length
+    ? await remote.execute(pick)
+    : { rows: [], columns: [] };
+  const have = new Map(
+    rs.rows.map((r) => [String(r[0]), cols.map((_, i) => r[i + 1] ?? null)]),
+  );
+  // 원격에 있는 행만, 문구가 다른 것만 — 없는 공지를 새로 만들지는 않는다(등록일을 지어낼 수 없다)
+  const changed = rows.filter((r) => {
+    const cur = have.get(String(r[key]));
+    return cur && cols.some((c, i) => (r[c] ?? null) !== cur[i]);
+  });
+  textPlan.push({ table, key, cols, where, rows: changed });
+}
+
 if (drift) {
   console.error(
     "\n⛔ 스키마가 어긋났습니다. 행만 얹어서는 맞출 수 없습니다." +
@@ -176,9 +223,25 @@ for (const { table, key, cols, rows, added } of plan) {
   );
 }
 
+for (const { table, key, cols, where, rows } of textPlan) {
+  if (!DRY && rows.length) {
+    await remote.batch(
+      rows.map((r) => ({
+        // 쓰는 순간에도 보이는 행만 — 확인과 쓰기 사이에 숨김 행이 된 경우까지 막는다
+        sql: `UPDATE ${table} SET ${cols.map((c) => `${c} = ?`).join(", ")} WHERE ${key} = ? AND ${where}`,
+        args: [...cols.map((c) => r[c] ?? null), r[key]],
+      })),
+      "write",
+    );
+  }
+  console.log(
+    `  ${table}: 문구 ${rows.length}건${rows.length ? ` (${rows.map((r) => r[key]).join(", ")})` : ""} — 등록일은 그대로`,
+  );
+}
+
 console.log(
   DRY
     ? "\n미리보기 끝 — 실제로 반영하려면 --dry 없이 다시 실행하세요."
-    : `\n완료 — 마스터 ${written}행 반영. 티켓·댓글·읽음선·첨부·공지는 건드리지 않았습니다.`,
+    : `\n완료 — 마스터 ${written}행 반영. 티켓·댓글·읽음선·첨부는 건드리지 않았고, 공지는 문구만 맞췄습니다.`,
 );
 local.close();

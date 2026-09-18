@@ -527,6 +527,32 @@ describe("정기 업무 — 여러 번 눌러도 한 건", () => {
     expect(rows[0].OWNER).toBe("sy.kim");
   });
 
+  it("지난달 완료로 적으며 반복을 켜면, 템플릿은 지난달 회차로 찍혀 이번 달 회차가 빠지지 않는다", async () => {
+    // 티켓은 신청일 = 완료일(지난달)로 간다. 템플릿을 '이번 달 생성됨'으로 찍으면
+    // 이번 달 대기 목록에서 빠져 이번 달 건이 조용히 안 만들어진다 (리뷰 재현)
+    as("sy.kim");
+    const lastMonthDay = `${currentYm(todaySeoul(40))}-15`;
+    const res = await postTask(
+      body(
+        form({
+          kind: "routine",
+          title: "지난달 완료 반복 (테스트)",
+          stage: "9",
+          answer: "지난달에 처리했습니다.",
+          doneDate: lastMonthDay,
+          repeatMonthly: true,
+          repeatDay: 5,
+        }),
+      ),
+    );
+    expect(res.status).toBe(201);
+    const [tpl] = await select<{ LAST_RUN_YM: string | null }>(
+      `SELECT LAST_RUN_YM FROM NX_TASK_TEMPLATE WHERE TITLE = '지난달 완료 반복 (테스트)'`,
+    );
+    expect(tpl.LAST_RUN_YM).toBe(lastMonthDay.slice(0, 7));
+    expect(tpl.LAST_RUN_YM).not.toBe(currentYm());
+  });
+
   it("이번 달 생성을 두 번 눌러도 두 번째는 만들 것이 없다", async () => {
     as("sy.kim");
     const first = await json(await runTemplates());

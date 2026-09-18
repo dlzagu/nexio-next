@@ -76,7 +76,12 @@ export function canDo(
       // 확장 경로. 고객사가 테스트 단계를 쓸 때만
       if (p !== "5") return false;
       if (!config?.usesTestStage) return false;
-      return isCustomer;
+      /**
+       * 🔒 신청자 본인만 (명세 §4-1). 예전엔 `isCustomer` 만 봐서 같은 회사 고객 누구나 —
+       *    비공개 건까지 보는 승인권자는 동료의 비공개 테스트 건까지 — 대신 완료할 수 있었다.
+       *    같은 표의 cancel·cancelRequest·reapply 와 같은 축이다.
+       */
+      return isCustomer && isRequester;
 
     /* ── 처리자 측 ─────────────────────────────────────────── */
 
@@ -115,7 +120,14 @@ export function canDo(
       // 담당자가 취소를 "권유"만 한다. 실행 버튼은 신청자 화면에만 있다.
       // 코멘트 4회 왕복 → 알림 1 + 클릭 1 로 줄이는 장치.
       if (terminal || !isHandler) return false;
-      return ["1", "2", "3", "4", "5", "6"].includes(p);
+      /**
+       * 🔴 신청자가 **실제로 취소할 수 있는 단계**(cancel 1·2 · cancelRequest 3)에서만.
+       *    해결안 제시(4) 이후에는 신청자에게 취소 수단이 없다(설계 ST001 §2 — 4 의 고객 액션은
+       *    없음). 거기서 권유하면 권유 글은 "취소는 신청자만", 신청자 화면은 "담당자에게 문의"로
+       *    **서로를 가리키는 순환**이 된다. 불변식: 권유 가능 ⇒ 신청자 cancel|cancelRequest 가능
+       *    (tests/server-rules). 취소 수단을 4 이후로 넓히는 것은 정책 결정이라 여기서 하지 않는다.
+       */
+      return ["1", "2", "3"].includes(p);
 
     /* ── 공통 ──────────────────────────────────────────────── */
 
@@ -215,9 +227,14 @@ export function cancelHint(
 
   const isRequester = ticket.requesterId === user.id;
   if (user.role !== "CUSTOMER") {
-    return "요청 취소는 신청자 본인만 실행할 수 있습니다. 담당자는 '취소 권유'를 보낼 수 있습니다.";
+    // 권유는 신청자가 취소할 수 있는 단계에서만 열린다 — 못 보내는 단계에서 권하지 않는다
+    return canDo("suggestCancel", ticket, user)
+      ? "요청 취소는 신청자 본인만 실행할 수 있습니다. 담당자는 '취소 권유'를 보낼 수 있습니다."
+      : "요청 취소는 신청자 본인만 실행할 수 있습니다.";
   }
-  if (!isRequester) {
+  // 신청자가 실제로 취소(1·2)·취소 요청(3)을 할 수 있는 단계에서만 "신청자만"이라고 말한다.
+  // 그 뒤 단계에서 이렇게 말하면 신청자에게 물어보라는 뜻이 되는데, 신청자도 못 한다(Aside 실측)
+  if (!isRequester && ["1", "2", "3"].includes(ticket.progress)) {
     return `이 요청의 신청자(${ticket.requesterName})만 취소할 수 있습니다.`;
   }
   if (isTerminal(ticket.progress)) {
@@ -227,7 +244,35 @@ export function cancelHint(
   if (ticket.progress === "10") {
     return "취소 요청이 전달되었습니다. 담당자가 확인하면 취소되거나, 사유와 함께 처리가 계속됩니다.";
   }
-  return "현재 단계에서는 취소할 수 없습니다. 담당자에게 문의해 주세요.";
+  /**
+   * ⚠️ '담당자에게 문의'로 돌려보내지 않는다 — 이 단계는 담당자도 취소할 수 없고 권유도
+   *    못 보낸다(suggestCancel 은 1~3 만). 두 화면이 서로를 가리키면 댓글 왕복만 남는다.
+   */
+  if (ticket.progress === "4") {
+    return "해결안이 제시된 뒤에는 취소할 수 없습니다. 처리결과를 확인하고, 더 필요한 내용은 댓글로 남겨 주세요.";
+  }
+  return "현재 단계에서는 취소할 수 없습니다. 필요한 내용은 댓글로 남겨 주세요.";
+}
+
+/* ── 서비스 신청 ──────────────────────────────────────────── */
+
+/**
+ * 🔒 서비스 신청을 **시작할 수 있는가** — 막혔으면 이유 문장, 열려 있으면 null.
+ * 화면(메뉴·버튼·/requests/new)과 신청 라우트가 **같은 판정**을 쓴다.
+ *
+ * 외부업체는 배정받아 처리하는 쪽이지 발의 주체가 아니다. fail-closed — 아는 역할
+ * (운영팀·고객사)만 열고 나머지는 전부 막는다. 예전 라우트는 `role === 'VENDOR'` 만
+ * 막아서, 역할을 모르는 계정은 오히려 통과했다(화면은 허용 목록이라 두 판정이 갈렸다).
+ */
+export function newRequestBlockedReason(
+  user: Pick<User, "role"> | null,
+): string | null {
+  if (!user) return "로그인이 필요합니다.";
+  if (user.role === "INTERNAL" || user.role === "CUSTOMER") return null;
+  if (user.role === "VENDOR") {
+    return "외부업체는 신청하지 않습니다 — 배정된 건만 처리합니다.";
+  }
+  return "이 계정으로는 서비스 신청을 할 수 없습니다.";
 }
 
 /* ── 업무 등록(대리 등록) ─────────────────────────────────── */

@@ -11,10 +11,20 @@
  * 컬럼을 추가해도 이전 DB 가 그대로 열려 "없는 컬럼" 오류가 난다 →
  * 버전이 다르면 ensureSeed 가 통째로 다시 만든다 (데모 DB 라 잃을 게 없다).
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export const SCHEMA_SQL = `
 CREATE TABLE NX_SCHEMA (VERSION INTEGER NOT NULL);
+
+/*
+ * 데모 시계 (ADR-0012) — 원본에 없는 표다. 행은 하나.
+ * 가상 시드는 '만든 날'을 오늘로 보고 날짜를 찍는다. 그대로 두면 달력만 흘러 한 달 뒤엔
+ * '최근 15일'·'최근 30일' 화면이 전부 비고 모든 건이 D+30 이 된다(라이브 실측).
+ * ANCHOR = 이 세계가 맞춰져 있는 마지막 순간. 하루 이상 지나면 그때까지의 기록을 통째로 민다.
+ * 컬럼을 NX_SCHEMA 에 붙이지 않은 이유: 공유 DB 는 컬럼 추가를 못 따라가지만 새 표는
+ * db:sync:remote 가 만들어 준다.
+ */
+CREATE TABLE NX_DEMO_CLOCK (ANCHOR TEXT NOT NULL);
 
 CREATE TABLE COMPANY_MST (
   COMPANY_CODE     TEXT PRIMARY KEY,

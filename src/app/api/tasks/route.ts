@@ -3,7 +3,7 @@ import { INTAKE } from "@/lib/codes";
 import { createTicket } from "@/lib/data/mutations";
 import { currentYm, insertTemplate } from "@/lib/data/tasks";
 import { devWritesAllowed, select, writeDisabledReason } from "@/lib/db";
-import { toDbStamp } from "@/lib/format";
+import { toDbStamp, todaySeoul } from "@/lib/format";
 import { canCreateTask, taskIntakeHint } from "@/lib/permissions";
 import { taskIntakeSchema } from "@/lib/schemas";
 import { currentUser } from "@/lib/session";
@@ -35,7 +35,11 @@ export async function POST(req: Request) {
   const parsed = taskIntakeSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
-      { code: "BAD_REQUEST", detail: parsed.error.issues },
+      {
+        code: "BAD_REQUEST",
+        message: parsed.error.issues[0]?.message,
+        detail: parsed.error.issues,
+      },
       { status: 400 },
     );
   }
@@ -133,11 +137,15 @@ export async function POST(req: Request) {
   /**
    * 완료 시각은 **한 시계에서만** 만든다.
    * 날짜(KST)와 시각(서버 로컬=UTC)을 섞으면 KST 새벽에 완료일이 접수일보다 하루 뒤,
-   * 심지어 미래로 찍힌다(실측). 날짜를 안 고르면 아예 넘기지 않아 createTicket 이
-   * 접수 시각(REQDATE)과 같은 값을 쓰게 한다.
+   * 심지어 미래로 찍힌다(실측). 날짜를 안 고르거나 **오늘**을 고르면 아예 넘기지 않아
+   * createTicket 이 접수 시각(REQDATE)과 같은 값을 쓰게 한다 — 오늘 끝낸 일을 오늘 0시로
+   * 끌어내리지 않는다.
+   *
+   * 지난 날짜면 그날 0시가 완료일이 되고, 신청일도 그날로 맞춰진다(createTicket —
+   * 끝낸 날보다 늦게 받았다고 적으면 완료일 < 신청일 모순이 된다).
    */
   const doneAt =
-    form.stage === "9" && form.doneDate
+    form.stage === "9" && form.doneDate && form.doneDate < todaySeoul()
       ? `${form.doneDate} 00:00:00`
       : undefined;
 
@@ -174,7 +182,10 @@ export async function POST(req: Request) {
       /**
        * 반복 등록은 티켓과 **한 트랜잭션**이다. 나눠 커밋하면 티켓만 생기고
        * 다음 달이 조용히 비는데, 등록한 사람은 등록됐다고 믿는다.
-       * 방금 이번 달 건을 만들었으므로 `ranYm` 을 함께 찍어 같은 달 중복을 막는다.
+       * 방금 만든 건의 **신청일 달**을 `ranYm` 으로 찍어 같은 달 중복을 막는다.
+       * ⚠️ 오늘의 달이 아니다 — 지난달 완료로 적으면 티켓은 지난달(신청일 = 완료일)로 가는데,
+       *    '이번 달 생성됨'으로 찍으면 이번 달 회차가 조용히 빠진다(리뷰 재현).
+       *    doneAt 은 오늘보다 과거일 때만 있고 그때 createTicket 의 신청일과 같다.
        */
       extra: form.repeatMonthly
         ? [
@@ -182,7 +193,7 @@ export async function POST(req: Request) {
               form,
               media: kind.media,
               ownerId: assignTo,
-              ranYm: ym,
+              ranYm: doneAt ? doneAt.slice(0, 7) : ym,
               at: toDbStamp(),
             }),
           ]

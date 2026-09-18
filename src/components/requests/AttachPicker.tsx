@@ -6,6 +6,7 @@ import {
   ACCEPT_ATTR,
   MAX_FILES,
   MAX_FILE_BYTES,
+  MAX_TOTAL_BYTES,
   fmtBytes,
   rejectReason,
   resolveMime,
@@ -24,6 +25,7 @@ export function AttachPicker({
   onChange,
   compact = false,
   inputId,
+  disabled = false,
 }: {
   files: File[];
   onChange: (next: File[]) => void;
@@ -31,6 +33,8 @@ export function AttachPicker({
   compact?: boolean;
   /** 다른 곳(붙여넣기 경고 등)에서 파일 선택을 열 수 있게 하는 id */
   inputId?: string;
+  /** 새 파일을 고를 수 없다. 왜 막혔는지는 호출자가 옆에 쓴다 */
+  disabled?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [problems, setProblems] = useState<string[]>([]);
@@ -74,6 +78,7 @@ export function AttachPicker({
         multiple
         accept={ACCEPT_ATTR}
         className="sr-only"
+        disabled={disabled}
         onChange={(e) => {
           add(e.target.files);
           // 같은 파일을 지웠다가 다시 고를 수 있게 비워 둔다
@@ -89,7 +94,7 @@ export function AttachPicker({
             : "border-line-strong text-12 text-fg-muted hover:bg-hover flex w-full items-center justify-center gap-2 rounded-md border border-dashed py-5",
         )}
         onClick={() => inputRef.current?.click()}
-        disabled={files.length >= MAX_FILES}
+        disabled={disabled || files.length >= MAX_FILES}
       >
         <Paperclip size={compact ? 12 : 13} aria-hidden />
         {files.length >= MAX_FILES
@@ -102,7 +107,7 @@ export function AttachPicker({
       {!compact ? (
         <p className="text-11 text-fg-subtle mt-1.5">
           이미지·PDF·문서·zip·텍스트 · 개당 {fmtBytes(MAX_FILE_BYTES)} 까지 ·
-          최대 {MAX_FILES}개
+          합계 {fmtBytes(MAX_TOTAL_BYTES)} · 최대 {MAX_FILES}개
         </p>
       ) : null}
 

@@ -1,5 +1,10 @@
 import { listTickets } from "@/lib/data/tickets";
-import { currentUser, listPersonas } from "@/lib/session";
+import {
+  currentUser,
+  listPersonas,
+  PERSONAS,
+  type Persona,
+} from "@/lib/session";
 import type { TicketFilters, User } from "@/lib/types";
 import { InlineError } from "@/components/ui/EmptyState";
 import { Sidebar } from "./Sidebar";
@@ -33,6 +38,19 @@ async function openCountFor(user: User): Promise<number | null> {
       e instanceof Error ? e.message : e,
     );
     return null;
+  }
+}
+
+/**
+ * 역할 전환 목록. 대조 조회가 실패하면 **전환을 막은 채**(fail-closed) 셸은 살린다 —
+ * 여기서 던지면 app/error.tsx 로도 못 잡고 global-error 까지 올라가 사이드바가 통째로 사라진다.
+ */
+async function personasFor(): Promise<Persona[]> {
+  try {
+    return await listPersonas();
+  } catch (e) {
+    console.error("[역할 전환 목록]", e instanceof Error ? e.message : e);
+    return PERSONAS.map((p) => ({ ...p, available: false }));
   }
 }
 
@@ -80,7 +98,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
 
   const openCount = await openCountFor(user);
   // 목록은 코드가 아니라 **DB 와 대조해** 만든다 — 없는 사람을 누를 수 있게 두지 않는다
-  const personas = await listPersonas();
+  const personas = await personasFor();
 
   return (
     <div className="flex min-h-dvh">

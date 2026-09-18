@@ -11,18 +11,21 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type FieldErrors } from "react-hook-form";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { payloadTooLargeMessage } from "@/lib/attachments";
 import { AttachPicker, toAttachmentPayload } from "./AttachPicker";
 import { Combobox } from "@/components/ui/Combobox";
 import { Field } from "@/components/ui/Field";
 import { Notice } from "@/components/ui/EmptyState";
 import { TokenInput } from "@/components/ui/TokenInput";
+import { afterCreateHref, listViewAfterCreate } from "@/lib/board";
 import { cn } from "@/lib/cn";
 import { MODULE, PRIORITY } from "@/lib/codes";
 import type { Option } from "@/lib/data/meta";
 import {
   REQUIRED_ORDER,
+  TEXT_LIMITS,
   requestFormSchema,
   type RequestForm as FormValues,
 } from "@/lib/schemas";
@@ -46,6 +49,7 @@ export function RequestForm({
   systems,
   contractTime,
   reRequestFrom,
+  reRequestDenied = null,
   initial,
 }: {
   user: User;
@@ -54,7 +58,10 @@ export function RequestForm({
   requesters: Option[];
   systems: Option[];
   contractTime: { month: number; used: number; remain: number } | null;
+  /** 재신청 원본 — 서버와 같은 판정(canDo reapply)을 통과한 것만 온다 */
   reRequestFrom: string | null;
+  /** 원본 번호를 받았지만 재신청할 수 없어 빈 양식으로 연 이유 */
+  reRequestDenied?: string | null;
   /** 재신청 프리필. null 이면 빈 양식 */
   initial: ReRequestSeed | null;
 }) {
@@ -81,6 +88,9 @@ export function RequestForm({
   } = useForm<FormValues>({
     resolver: zodResolver(requestFormSchema),
     mode: "onBlur",
+    // 포커스는 onInvalid 한 곳이 정한다 — RHF 기본값은 onInvalid **뒤에** register 된 칸
+    // (제목 등)으로 다시 옮겨, 위쪽 콤보박스(고객사·시스템) 오류를 화면 밖에 남긴다
+    shouldFocusError: false,
     defaultValues: {
       custCode: initial?.custCode || (isCustomer ? user.custCode : ""),
       requesterId: defaultRequester,
@@ -100,6 +110,29 @@ export function RequestForm({
   const v = watch();
   // 이메일은 이 화면에서 고칠 수 없다 → 인라인 오류가 아니라 차단 배너로 처리한다
   const emailMissing = !user.email;
+
+  /**
+   * 고른 고객사의 신청자·운영시스템만 보여 준다. 좁히는 건 편의고 경계는 라우트다(소속 재조회).
+   * 좁히지 않으면 운영팀이 이름만 보고 **다른 고객사 사람**을 골라, 다 채운 뒤 403 을 맞는다
+   * (업무 등록 TaskSheet 와 같은 규칙). 고객사 사용자는 목록이 이미 자기 회사뿐이라 그대로다.
+   */
+  const custCode = v.custCode ?? "";
+  const ofCustomer = (o: Option) => !custCode || o.group === custCode;
+  const requestersOf = requesters.filter(ofCustomer);
+  const systemsOf = systems.filter(ofCustomer);
+  const pickedRequester = requestersOf.find((o) => o.value === v.requesterId);
+
+  /**
+   * 🔴 저장 후 신청한 사람이 **볼 수 없는** 조합인가 (고객사 비승인권자 + 동료 명의 + 비공개).
+   *    저장 뒤에야 알면 "사라졌다"고 읽혀 다시 낸다 → 제출 전에 말한다.
+   *    판정은 저장 후 이동과 같은 함수(listViewAfterCreate)다.
+   */
+  const hiddenAfterSave =
+    !!v.requesterId &&
+    listViewAfterCreate(
+      { requesterId: v.requesterId, isPublic: !!v.isPublic, progress: "2" },
+      user,
+    ) === null;
 
   const errorList = REQUIRED_ORDER.filter(
     (k) => errors[k as keyof FormValues],
@@ -124,21 +157,34 @@ export function RequestForm({
       });
       const body = (await res.json().catch(() => ({}))) as {
         echoNum?: string;
+        progress?: string;
         message?: string;
         code?: string;
       };
       if (res.status === 201 && body.echoNum) {
         // 저장된 건을 바로 열어 준다 — "접수됐는지 모르겠다"가 남지 않게.
+        // 🔴 목록은 그 건이 **실제로 걸리는** 뷰로 — 운영팀 대리 신청은 '내 담당'에 없고,
+        //    비공개 동료 명의 신청은 나도 볼 수 없어 상세 대신 안내를 남긴다 (afterCreateHref).
         // 이동이 끝날 때까지 submitting 을 풀지 않아 중복 제출을 막는다.
         router.push(
-          `/requests?view=mine&open=${encodeURIComponent(body.echoNum)}`,
+          afterCreateHref(
+            body.echoNum,
+            {
+              requesterId: values.requesterId,
+              isPublic: !!values.isPublic,
+              progress: body.progress ?? "2",
+            },
+            user,
+          ),
         );
         return;
       }
       setSubmitState({
         text:
-          body.message ??
-          `요청을 저장하지 못했습니다 (${body.code ?? `HTTP ${res.status}`}).`,
+          res.status === 413
+            ? payloadTooLargeMessage()
+            : (body.message ??
+              `요청을 저장하지 못했습니다 (${body.code ?? `HTTP ${res.status}`}).`),
         // 202(쓰기 비활성)는 실패가 아니라 "여기까지는 통과" 라는 안내다
         failed: res.status !== 202,
       });
@@ -151,9 +197,17 @@ export function RequestForm({
     setSubmitting(false);
   };
 
-  const onInvalid = () => {
-    // 제출 시 미충족 필드 전체를 한 번에 보여주고 첫 필드로 스크롤·포커스
-    const first = REQUIRED_ORDER.find((k) => errors[k as keyof FormValues]);
+  /**
+   * 제출 시 미충족 필드 전체를 한 번에 보여주고 첫 필드로 스크롤·포커스.
+   * 🔴 인자로 받은 오류를 쓴다 — 바깥의 `errors` 는 렌더 시점 스냅샷이라 첫 제출에는
+   *    비어 있다(RHF 가 다시 그리기 전에 부른다). 그러면 첫 클릭에 아무 반응이 없어 보인다.
+   *    고객사·신청자·시스템은 register 없는 콤보박스라 RHF 기본 포커스도 닿지 않는다.
+   */
+  const onInvalid = (errs: FieldErrors<FormValues>) => {
+    // 필수 순서가 먼저, 그 밖의 오류(희망 완료일 등)는 뒤에 — 어느 쪽이든 한 칸은 잡는다
+    const first =
+      REQUIRED_ORDER.find((k) => errs[k as keyof FormValues]) ??
+      Object.keys(errs)[0];
     if (first) {
       const el = document.getElementById(`f-${first}`);
       el?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -207,6 +261,8 @@ export function RequestForm({
             양식으로 시작합니다. 접수번호를 확인해 주세요.
           </Notice>
         )
+      ) : reRequestDenied ? (
+        <Notice tone="warning">↻ {reRequestDenied}</Notice>
       ) : null}
 
       {/* 이메일 누락은 이 화면에서 해결할 수 없다 → 인라인 오류 대신 차단 배너 */}
@@ -244,9 +300,17 @@ export function RequestForm({
               id="f-custCode"
               options={companies}
               value={v.custCode ?? ""}
-              onChange={(x) =>
-                setValue("custCode", x, { shouldValidate: true })
-              }
+              onChange={(x) => {
+                setValue("custCode", x, { shouldValidate: true });
+                // 바뀐 고객사의 것이 아닌 선택은 버린다 — 남겨 두면 서버가 403/400 으로 거부한다.
+                // (effect 가 아니라 바꾼 그 자리에서 비운다 — 연쇄 렌더를 만들지 않는다)
+                const keep = (list: Option[], cur: string | undefined) =>
+                  list.some((o) => o.value === cur && o.group === x);
+                if (!keep(requesters, v.requesterId)) {
+                  setValue("requesterId", "");
+                }
+                if (!keep(systems, v.systemId)) setValue("systemId", "");
+              }}
               placeholder="고객사 선택"
               allowClear={false}
               invalid={!!errors.custCode}
@@ -258,15 +322,22 @@ export function RequestForm({
             label="신청자"
             required
             error={errors.requesterId?.message as string | undefined}
+            // 고른 신청자를 설명한다 — 운영팀이 대신 낼 때 내 이메일이 뜨면 누구 건인지 헷갈린다
             hint={
-              user.email
-                ? `${user.email}${user.dept ? ` · ${user.dept}` : ""}`
-                : undefined
+              v.requesterId === user.id
+                ? user.email
+                  ? `${user.email}${user.dept ? ` · ${user.dept}` : ""}`
+                  : undefined
+                : pickedRequester?.hint
+                  ? `${pickedRequester.label} · ${pickedRequester.hint}`
+                  : custCode
+                    ? undefined
+                    : "고객사를 먼저 고르면 그 회사 사람만 보입니다"
             }
           >
             <Combobox
               id="f-requesterId"
-              options={requesters}
+              options={requestersOf}
               value={v.requesterId ?? ""}
               onChange={(x) =>
                 setValue("requesterId", x, { shouldValidate: true })
@@ -285,7 +356,7 @@ export function RequestForm({
           >
             <Combobox
               id="f-systemId"
-              options={systems}
+              options={systemsOf}
               value={v.systemId ?? ""}
               onChange={(x) =>
                 setValue("systemId", x, { shouldValidate: true })
@@ -338,6 +409,7 @@ export function RequestForm({
             <textarea
               id="f-symptom"
               {...register("symptom")}
+              maxLength={TEXT_LIMITS.body}
               className="input min-h-[88px]"
               aria-invalid={!!errors.symptom}
             />
@@ -352,6 +424,7 @@ export function RequestForm({
             <textarea
               id="f-content"
               {...register("content")}
+              maxLength={TEXT_LIMITS.body}
               className="input min-h-[132px]"
               aria-invalid={!!errors.content}
               onPaste={(e) => {
@@ -483,6 +556,14 @@ export function RequestForm({
             잔여 <strong className="num">{contractTime.remain}h</strong>
           </span>
         </div>
+      ) : null}
+
+      {hiddenAfterSave ? (
+        <Notice tone="warning">
+          <strong>비공개</strong>로 다른 사람 명의로 신청하면, 저장 후에는{" "}
+          <strong>신청자와 승인권자만</strong> 이 건을 볼 수 있습니다(나는 볼 수
+          없습니다). 계속 보려면 &lsquo;추가 설정&rsquo;에서 공개로 바꾸세요.
+        </Notice>
       ) : null}
 
       {submitState ? (

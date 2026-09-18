@@ -32,13 +32,40 @@ export function toWallClockIso(
   return s.replace(" ", "T").replace(/(?:Z|[+-]\d\d:?\d\d)$/, "");
 }
 
+const KST_MS = 9 * 60 * 60 * 1000;
+
 /**
- * 저장 형식 'YYYY-MM-DD HH:MM:SS'.
+ * 그 순간의 **한국 벽시계**를 로컬 필드로 갖는 Date — `getHours()`·`getMonth()` 가 곧 KST 값이다.
+ *
+ * 🔴 서버의 로컬 시간대를 믿지 않는다. 개발 PC 는 KST 라 `format(new Date())` 가 맞아
+ *    보이지만 Vercel 은 UTC 라, 라이브에서 쓴 행만 **9시간 이르게** 찍혔다 — 오전에 단 댓글이
+ *    전날 밤 글이 되어 스레드 순서가 뒤집히고, 월초 새벽에 만든 요청은 지난달 번호를 받는다.
+ */
+export function seoulWallDate(at: Date = new Date()): Date {
+  return new Date(at.getTime() + KST_MS + at.getTimezoneOffset() * 60_000);
+}
+
+/**
+ * 저장 형식 'YYYY-MM-DD HH:MM:SS' — 한국 벽시계.
  * 🔴 UTC 로 바꾸지 않는다 — 저장값 전체가 타임존 없는 벽시계라
  *    새로 쓰는 행만 UTC 로 넣으면 기존 행과 9시간 어긋난다 (toWallClockIso 주석 참조).
  */
 export function toDbStamp(d: Date = new Date()): string {
-  return format(d, "yyyy-MM-dd HH:mm:ss");
+  return format(seoulWallDate(d), "yyyy-MM-dd HH:mm:ss");
+}
+
+/**
+ * 받침에 맞는 조사를 붙인다 — '답변을' · '원인을' · '전화를' · '김서연이'.
+ * "을(를)" 을 그대로 두면 사람이 아니라 기계가 쓴 문장으로 읽힌다.
+ * 끝 글자가 한글이 아니면(영문·숫자) 받침을 알 수 없어 병기형을 쓴다.
+ */
+export function josa(word: string, pair: "을/를" | "이/가" | "은/는"): string {
+  const [withFinal, withoutFinal] = pair.split("/");
+  const code = word.trim().charCodeAt(word.trim().length - 1);
+  if (!(code >= 0xac00 && code <= 0xd7a3)) {
+    return `${word}${withFinal}(${withoutFinal})`;
+  }
+  return `${word}${(code - 0xac00) % 28 === 0 ? withoutFinal : withFinal}`;
 }
 
 export function toValidDate(
@@ -117,14 +144,31 @@ export function decodeEntities(s: string | null | undefined): string {
 }
 
 /**
+ * 🔴 저장값이 **이스케이프된 HTML** 인 레코드가 섞여 있다 (실측: `CAUSE`·`ANSWER`·
+ *    `OKREMARKS`·`REMARKS` 가 `&lt;div&gt;` 형태). 그대로 렌더하면 태그가 글자로 보인다.
+ *    실제 태그는 없고 이스케이프된 태그만 있으면 한 번 풀어준다.
+ *
+ * ⚠️ **실제 태그가 있으면 풀지 않는다** — 새 신청의 평문은 이스케이프한 뒤 `<p>` 로 감싸
+ *    저장한다(`<p>&lt;select&gt; 에서 a&lt;b</p>`). 무조건 풀면 사용자가 쓴 꺾쇠가 태그가
+ *    되어 미리보기·재신청 프리필에서 지워진다.
+ * ⚠️ 새니타이즈와 함께 쓸 때는 **풀고 나서 새니타이즈**한다. 반대로 하면 걸러지지 않은
+ *    마크업이 그대로 살아난다.
+ */
+export function unescapeStoredMarkup(raw: string): string {
+  const hasRealTags = /<\s*\/?[a-z]/i.test(raw);
+  const hasEscapedTags = /&lt;\s*\/?[a-z]/i.test(raw);
+  return !hasRealTags && hasEscapedTags ? decodeEntities(raw) : raw;
+}
+
+/**
  * HTML → 평문. **문단 구분을 줄바꿈으로 살린다** — 재신청 프리필처럼
  * 저장된 HTML 을 textarea 로 되돌릴 때 쓴다 (한 줄로 뭉개면 원문을 못 알아본다).
- * 저장값이 이스케이프된 HTML 인 레코드가 있어(`&lt;div&gt;`) 먼저 풀고 태그를 걷는다.
- * 그 다음 한 번 더 풀어 본문의 실제 엔티티(`&#39;`)까지 평문으로 만든다.
+ * 이스케이프된 레코드(`&lt;div&gt;`)는 먼저 풀고(unescapeStoredMarkup) 태그를 걷은 뒤,
+ * 한 번 더 풀어 본문의 실제 엔티티(`&#39;`·사용자가 쓴 `&lt;`)까지 평문으로 만든다.
  */
 export function htmlToPlain(html: string | null | undefined): string {
   if (!html) return "";
-  const text = decodeEntities(html)
+  const text = unescapeStoredMarkup(html)
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|li|tr|h[1-6])>/gi, "\n")
     .replace(/<[^>]+>/g, "");
@@ -142,9 +186,8 @@ export function plainPreview(
   max = 140,
 ): string {
   if (!html) return "";
-  // 저장값이 이스케이프된 HTML 인 레코드가 있어(`&lt;div&gt;`) 먼저 풀고 태그를 걷는다.
-  // 그 다음 한 번 더 풀어 본문의 실제 엔티티(`&#39;`)까지 평문으로 만든다.
-  const text = decodeEntities(html)
+  // 이스케이프된 레코드만 먼저 풀고 태그를 걷는다 — htmlToPlain 과 같은 순서
+  const text = unescapeStoredMarkup(html)
     .replace(/<br\s*\/?>/gi, " ")
     .replace(/<\/(p|div|li|tr)>/gi, " ")
     .replace(/<[^>]+>/g, "");
@@ -164,7 +207,6 @@ export function plainPreview(
  *    한국은 서머타임이 없어 +09:00 이 항상 참이다.
  */
 export function todaySeoul(daysAgo = 0): string {
-  const KST = 9 * 60 * 60 * 1000;
-  const t = Date.now() + KST - daysAgo * 24 * 60 * 60 * 1000;
+  const t = Date.now() + KST_MS - daysAgo * 24 * 60 * 60 * 1000;
   return new Date(t).toISOString().slice(0, 10);
 }

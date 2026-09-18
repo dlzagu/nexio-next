@@ -26,6 +26,11 @@ export function NotificationBell() {
     items: NotificationItem[];
     total: number;
   } | null>(null);
+  /**
+   * 조회 실패. 🔴 실패를 '알림 없음'으로 그리지 않는다 — 0 건과 못 읽음은 같은 모양이라
+   * 담당자가 볼 것이 없다고 믿는다 (사이드바 카운트의 null/0 구분과 같은 축).
+   */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   /** 다시 읽어야 할 이유가 생겼다는 표시 (다른 화면에서 읽음 처리가 일어난 경우) */
   const [tick, setTick] = useState(0);
@@ -38,8 +43,30 @@ export function NotificationBell() {
   useEffect(() => {
     let alive = true;
     fetch("/api/notifications")
-      .then((r) => (r.ok ? r.json() : { items: [], total: 0 }))
-      .then((d) => alive && setData(d));
+      .then(async (r) => {
+        if (!r.ok) {
+          const body = (await r.json().catch(() => ({}))) as {
+            code?: string;
+          };
+          throw new Error(`${r.status} ${body.code ?? ""}`.trim());
+        }
+        return (await r.json()) as {
+          items: NotificationItem[];
+          total: number;
+        };
+      })
+      .then((d) => {
+        if (!alive) return;
+        setData(d);
+        setLoadError(null);
+      })
+      .catch((e: unknown) => {
+        // 원인은 콘솔에(서버 쪽은 라우트 로그에) 남기고, 화면은 '못 읽음'으로 말한다
+        console.error("[알림 조회 실패]", e);
+        if (!alive) return;
+        setData(null);
+        setLoadError(e instanceof Error ? e.message : String(e));
+      });
     return () => {
       alive = false;
     };
@@ -80,13 +107,20 @@ export function NotificationBell() {
     setNote(body.message ?? `읽음 처리를 하지 못했습니다 (${res.status}).`);
   };
 
-  const count = data?.total ?? 0;
+  // 못 읽었으면 배지를 그리지 않는다 — 옛 숫자나 0 을 사실처럼 보이지 않게
+  const count = loadError ? 0 : (data?.total ?? 0);
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
         className="btn btn-ghost btn-sm relative"
-        aria-label={count > 0 ? `알림 ${count}건` : "알림"}
+        aria-label={
+          loadError
+            ? "알림 (불러오지 못함)"
+            : count > 0
+              ? `알림 ${count}건`
+              : "알림"
+        }
         title="알림"
       >
         <Bell size={15} aria-hidden />
@@ -129,7 +163,16 @@ export function NotificationBell() {
           ) : null}
 
           <div className="min-h-0 flex-1 overflow-auto">
-            {!data ? (
+            {loadError ? (
+              <p
+                role="alert"
+                className="text-12 text-danger-text px-3 py-6 text-center leading-relaxed"
+              >
+                알림을 불러오지 못했습니다 ({loadError}).
+                <br />
+                &lsquo;알림 없음&rsquo;이 아닙니다 — 잠시 뒤 다시 열어 보세요.
+              </p>
+            ) : !data ? (
               <p className="text-12 text-fg-subtle px-3 py-6 text-center">
                 불러오는 중…
               </p>

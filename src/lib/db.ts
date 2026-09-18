@@ -2,7 +2,16 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { createClient, type Client } from "@libsql/client/web";
+import {
+  addDaysStamp,
+  ELIGIBLE_UNITS_SQL,
+  inferLegacyAnchor,
+  LEGACY_WITNESS_SQL,
+  rebaseStatements,
+  shiftDays,
+} from "./dev-seed/clock";
 import { ensureSeed } from "./dev-seed/generate";
+import { toDbStamp } from "./format";
 
 /**
  * 데모 DB (SQLite + 가상 시드 데이터).
@@ -40,6 +49,8 @@ function dbPath(): string {
 const g = globalThis as unknown as {
   __nxDb?: Database.Database;
   __nxRemote?: Client;
+  __nxClock?: { checkedAt: number; run: Promise<void> };
+  __nxClockState?: DemoClockState;
 };
 
 /**
@@ -108,8 +119,20 @@ function bindable(sql: string, params: Param[]) {
   return bound;
 }
 
-/** SELECT 전용. 다른 구문은 실행하지 않고 던진다 */
+/**
+ * SELECT 전용. 다른 구문은 실행하지 않고 던진다.
+ * 읽기 전에 데모 시계를 한 번 맞춘다(10분에 한 번 확인) — 아래 keepDemoClock 참고.
+ */
 export async function select<T = Record<string, unknown>>(
+  sql: string,
+  params: Param[] = [],
+): Promise<T[]> {
+  await keepDemoClock();
+  return rawSelect<T>(sql, params);
+}
+
+/** 시계 맞추기 자신이 쓰는 읽기 — select 를 부르면 자기 자신을 기다리게 된다 */
+async function rawSelect<T = Record<string, unknown>>(
   sql: string,
   params: Param[] = [],
 ): Promise<T[]> {
@@ -220,6 +243,126 @@ export async function write(statements: WriteStatement[]): Promise<number[]> {
     prepared.map(({ stmt, bound }) => stmt.run(bound).changes),
   );
   return tx();
+}
+
+/* ── 데모 시계 (ADR-0012) ─────────────────────────────────────── */
+
+export type DemoClockState =
+  | { state: "aligned"; anchor: string }
+  | { state: "shifted"; anchor: string; days: number; units: number }
+  /** 하루 이상 밀려 있는데 쓰기가 잠겨 있다 (서버리스 메모리 DB 의 오래 산 인스턴스 등) */
+  | { state: "stale-locked"; anchor: string; days: number }
+  /** 옛 공유 DB — 표가 없다. 앱은 만들 수 없다(쓰기 관문이 DDL 을 거부한다) */
+  | { state: "missing-table" }
+  /** 표는 있는데 기준을 알 수 없다 (기준 행도 시드 공지도 없거나, 역산 값이 미래다) */
+  | { state: "unknown" }
+  | { state: "error"; error: string };
+
+const CLOCK_CHECK_MS = 10 * 60 * 1000;
+
+/**
+ * 읽기 전에 부른다. 프로세스(인스턴스)마다 10분에 한 번만 실제로 확인하고, 그 사이의
+ * 동시 호출은 같은 약속을 기다린다 — 밀기가 끝나기 전의 낡은 세계를 그리지 않게.
+ *
+ * ⚠️ 실패해도 읽기는 계속한다(시계가 하루 늦은 것은 화면을 못 여는 것보다 낫다).
+ *    대신 삼키지 않는다 — 서버 로그에 남기고 /api/diag 가 500 으로 신고한다.
+ */
+async function keepDemoClock(): Promise<void> {
+  const now = Date.now();
+  const c = g.__nxClock;
+  if (c && now - c.checkedAt < CLOCK_CHECK_MS) return c.run;
+  const run = alignDemoClock()
+    .then((s) => {
+      g.__nxClockState = s;
+    })
+    .catch((e: unknown) => {
+      const error = e instanceof Error ? e.message : String(e);
+      console.error("[demo-clock] 데모 시계를 맞추지 못했다:", error);
+      g.__nxClockState = { state: "error", error };
+    });
+  g.__nxClock = { checkedAt: now, run };
+  return run;
+}
+
+/** 마지막으로 확인한 시계 상태 — /api/diag 용. 아직 확인 전이면 지금 확인한다 */
+export async function demoClockState(): Promise<DemoClockState> {
+  await keepDemoClock();
+  return g.__nxClockState ?? { state: "unknown" };
+}
+
+/**
+ * 기준(ANCHOR) 이후 만 하루 이상 지났으면 그만큼 세계를 민다. 한 트랜잭션, UPDATE 만.
+ * @param nowStamp 테스트가 '지금'을 주입한다. 기본은 한국 벽시계(저장값과 같은 시계)
+ */
+export async function alignDemoClock(
+  nowStamp: string = toDbStamp(),
+): Promise<DemoClockState> {
+  const table = await rawSelect<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='NX_DEMO_CLOCK'",
+  );
+  if (Number(table[0]?.n ?? 0) === 0) return { state: "missing-table" };
+
+  // 빈 문자열도 '모름'이다 — 모르는 기준으로 밀면 세계가 엉뚱한 날로 간다
+  const readAnchor = async () =>
+    (
+      await rawSelect<{ ANCHOR: string | null }>(
+        "SELECT ANCHOR FROM NX_DEMO_CLOCK LIMIT 1",
+      )
+    )[0]?.ANCHOR?.trim() || null;
+
+  let anchor = await readAnchor();
+  if (!anchor) {
+    // 표만 새로 생긴 옛 공유 DB (db:sync:remote 가 빈 표를 만든다) — 기준을 역산해 한 번 적는다.
+    // 증인은 **시드 공지만**(LEGACY_WITNESS_SQL) — 같은 표의 숨김 관리 이력은 지금 날짜라 기준을 망친다
+    const latest = await rawSelect<{ m: string | null }>(LEGACY_WITNESS_SQL);
+    const inferred = inferLegacyAnchor(latest[0]?.m ?? null, nowStamp);
+    if (!inferred) return { state: "unknown" };
+    if (!devWritesAllowed()) {
+      return {
+        state: "stale-locked",
+        anchor: inferred,
+        days: shiftDays(inferred, nowStamp),
+      };
+    }
+    await write([
+      {
+        // 동시에 두 인스턴스가 적어도 한 행만 남는다
+        sql: `INSERT INTO NX_DEMO_CLOCK (ANCHOR)
+              SELECT @a WHERE NOT EXISTS (SELECT 1 FROM NX_DEMO_CLOCK)`,
+        params: [{ name: "a", value: inferred }],
+      },
+      {
+        sql: `UPDATE NX_DEMO_CLOCK SET ANCHOR = @a WHERE TRIM(ANCHOR) = ''`,
+        params: [{ name: "a", value: inferred }],
+      },
+    ]);
+    anchor = (await readAnchor()) ?? inferred;
+  }
+
+  const days = shiftDays(anchor, nowStamp);
+  if (days < 1) return { state: "aligned", anchor };
+  if (!devWritesAllowed()) return { state: "stale-locked", anchor, days };
+
+  // 옮길 요청을 **먼저** 고른다 — 구문이 돌며 값이 바뀌면 판정이 흔들린다 (clock.ts 불변식 ②)
+  const units = await rawSelect<{ ECHONUM: string }>(ELIGIBLE_UNITS_SQL, [
+    { name: "anchor", value: anchor },
+  ]);
+  await write(
+    rebaseStatements(
+      anchor,
+      days,
+      units.map((u) => u.ECHONUM),
+    ),
+  );
+  console.info(
+    `[demo-clock] ${days}일 밀었다 — 요청 ${units.length}건 (${anchor} → ${addDaysStamp(anchor, days)})`,
+  );
+  return {
+    state: "shifted",
+    anchor: addDaysStamp(anchor, days),
+    days,
+    units: units.length,
+  };
 }
 
 export async function dbHealth(): Promise<{

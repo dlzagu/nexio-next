@@ -11,7 +11,13 @@
 
 export const MAX_FILES = 5;
 export const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2MB
-export const MAX_TOTAL_BYTES = 5 * 1024 * 1024; // 5MB
+/**
+ * 합계 3MB. 🔴 배포처(Vercel Functions)는 요청 본문이 **4.5MB** 를 넘으면 함수에 닿기도
+ * 전에 413 을 돌려준다. 첨부는 base64 로 JSON 에 실려 4/3 로 부풀어서, 예전 한도(5MB)로는
+ * 원본 약 3.3MB 부터 "한도 안이라고 안내받았는데 저장 실패(HTTP 413)"가 났다.
+ * 3MB → 인코딩 약 4.0MB + 본문 글자 여유 = 4.5MB 안 (ADR-0008 · tests/server-rules).
+ */
+export const MAX_TOTAL_BYTES = 3 * 1024 * 1024; // 3MB
 
 /** MIME → 허용 확장자. 둘이 **함께** 맞아야 통과한다 */
 export const ALLOWED_TYPES: Record<string, string[]> = {
@@ -81,6 +87,14 @@ export function fmtBytes(n: number): string {
   if (n < 1024) return `${n}B`;
   if (n < 1024 * 1024) return `${Math.round(n / 1024)}KB`;
   return `${(n / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+/**
+ * 요청 본문이 플랫폼 한도를 넘었을 때(HTTP 413)의 문장. 라이브(서버리스)는 우리 라우트에
+ * 닿기도 전에 JSON 이 아닌 413 을 돌려줘서, 그대로 두면 화면에 "HTTP 413" 만 뜬다.
+ */
+export function payloadTooLargeMessage(): string {
+  return `첨부가 너무 커서 서버가 받지 않았습니다. 합계 ${fmtBytes(MAX_TOTAL_BYTES)} 이하로 줄여 주세요.`;
 }
 
 /** 업로드 거부 사유 — 화면과 서버가 같은 문장을 쓴다 */

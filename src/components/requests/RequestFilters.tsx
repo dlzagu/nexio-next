@@ -10,7 +10,11 @@ import { useState } from "react";
 import { Combobox } from "@/components/ui/Combobox";
 import { MODULE, PRIORITY, PROGRESS } from "@/lib/codes";
 import type { Option } from "@/lib/data/meta";
-import { useUrlState } from "./useUrlState";
+import {
+  countAdvancedFilters,
+  listFilterResetPatch,
+  useUrlState,
+} from "./useUrlState";
 
 const toOptions = (m: Record<string, string>): Option[] =>
   Object.entries(m).map(([value, label]) => ({ value, label }));
@@ -45,14 +49,8 @@ export function RequestFilters({
   );
   const kw = draft?.base === urlQ ? draft.value : urlQ;
   const setKw = (value: string) => setDraft({ base: urlQ, value });
-  const activeAdvanced = [
-    "assignee",
-    "requester",
-    "module",
-    "priority",
-    "migration",
-    "unread",
-  ].filter((k) => get(k)).length;
+  // 배지·초기화가 세는 키는 목록 빈 상태와 같은 정본을 본다 (useUrlState)
+  const activeAdvanced = countAdvancedFilters(params);
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -220,24 +218,7 @@ export function RequestFilters({
           <button
             type="button"
             className="btn btn-ghost ml-auto"
-            onClick={() =>
-              set(
-                {
-                  q: null,
-                  custCode: null,
-                  progress: null,
-                  from: null,
-                  to: null,
-                  assignee: null,
-                  requester: null,
-                  module: null,
-                  priority: null,
-                  migration: null,
-                  unread: null,
-                },
-                { resetPage: true },
-              )
-            }
+            onClick={() => set(listFilterResetPatch(), { resetPage: true })}
           >
             <RotateCcw size={13} aria-hidden />
             필터 초기화

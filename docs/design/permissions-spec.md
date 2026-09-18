@@ -4,6 +4,26 @@
 > 이 문서는 그것을 **순수 함수 하나**로 모은 스펙이다. P6 구현 시 이 표가 곧 테스트 케이스가 된다.
 > 근거: `../inventory/ST001-조회.md` · `../inventory/data-profile.md` · 기준: `ux-principles.md` P6
 
+> 🔴 **구현 정본은 `src/lib/permissions.ts` + 테스트다** (`tests/permissions.test.ts` ·
+> `tests/dead-end.test.ts` · `tests/server-rules.test.ts`). 이 문서는 **P2 설계 당시의 스펙**이라
+> 아래 표만큼 코드와 다르다. 규칙을 바꿀 때는 코드·테스트를 먼저 고치고 이 표에 한 줄 남긴다 —
+> 본문을 줄 단위로 따라 고치지 않는다(설계 당시의 판단 근거가 사라진다).
+> ⚠️ 이 문서의 §7 을 그대로 테스트로 옮기면 #8·#13 이 실패한다(아래 표 `testRequest`·`complete`).
+
+| 항목 | 이 문서(설계) | 구현(정본) | 근거 |
+| --- | --- | --- | --- |
+| 액션 이름 | `accept` · `suggest` · `rejectCust` | `receive` · `propose` · `reject` | 코드 어휘로 통일 (`types.ts` TicketAction) |
+| 취소요청(10)의 출구 | 없음 | `cancelApprove`(→11) · `cancelDeny`(→3) — 처리자(배정 시 담당자) | 들어가는 길만 있던 막다른 상태 (`dead-end.test`) |
+| `testRequest` (4→5) | `config.testYn` 이면 4 에서 | **미구현** — 5 로 들어가는 전이가 없다. 테스트 단계(5·6)는 시드로만 존재 | 5·6 은 전 기간 10건 (data-profile) · ADR-0011 |
+| `complete` | 4: `!testYn && !systemYn` · 6: `!systemYn` · 8 | 4 · 6(`usesTestStage` 일 때), 배정 시 담당자. **답변 필수** | `testRequest` 가 없어 4 를 막으면 TESTYN 고객사는 영원히 못 끝낸다. 빈 처리결과 종료 금지(2026-09-18) |
+| 시스템 이관 (`systemRequest`·`systemApprove`·`completeCust`, 7·8) | 규칙 있음 | 미구현 | 전 기간 0건 |
+| `testComplete` | `isRequester` · `config.testYn` | **동일** — 2026-09-18 코드를 명세에 맞췄다 (이전 코드는 같은 회사 고객 누구나) | 승인권자가 동료의 비공개 테스트 건까지 대신 완료할 수 있었다 |
+| `suggestCancel` | `2`~`8` | **`1`~`3`** — 신청자가 `cancel`·`cancelRequest` 를 가진 단계만 (2026-09-18) | 4 이후 권유는 권유 글("취소는 신청자만")과 신청자 힌트("담당자에게 문의")가 서로를 가리키는 순환. 불변식은 `server-rules.test` |
+| 사유 | 언급 없음 | `reject`·`cancelDeny`·`suggestCancel` 은 **사유 필수**(400 `REASON_REQUIRED`). `approve`·`cancel`·`cancelApprove` 는 선택 (2026-09-18) | 되돌릴 수 없는 판단·상대 요청의 거절을 이유 없이 남기지 않는다 |
+| §1 `operCompany` 격리 | 필수 | 배정(`SUCCERSON`) 기준으로 좁힘 | §1 배너 |
+| §5 미배정 정책 | 사용자 결정 필요 | A(미배정 = 처리자 누구나) + **접수 = 인계**(접수한 사람이 담당자) | `permissions.ts` receive 주석 |
+| §8 열린 항목 3건 | 열림 | 전부 닫힘 | `docs/progress/nexio-mvp.json` closed_items |
+
 ## 0. 🔴 먼저 — 역할 구조를 잘못 알고 있었다
 
 `ST001.jsp:2222`

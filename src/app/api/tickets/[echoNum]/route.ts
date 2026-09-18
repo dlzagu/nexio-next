@@ -49,5 +49,8 @@ export async function GET(
       // 편집 UI 가 조용히 사라지지 않게, 막힌 이유를 함께 내린다
       editSolutionReason: editSolutionHint(ticket, user, config),
     },
+    // 누가 보고 있는가 — 고객에게만 띄우는 안내(해결안 확인 후 댓글)를 가른다.
+    // actions 와 같은 요청에서 계산해 역할 전환 뒤에도 서로 어긋나지 않는다
+    viewer: { id: user.id, role: user.role },
   });
 }

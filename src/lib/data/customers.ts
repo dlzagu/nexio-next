@@ -89,7 +89,7 @@ export interface NewCustomerInput {
   usesSystemStage: boolean;
   defaultPrivate: boolean;
   showsContractTime: boolean;
-  /** 첫 운영시스템 이름. 없으면 신청 화면에서 고를 게 없다 */
+  /** 첫 운영시스템 이름 — 필수. 없으면 신청 화면에서 고를 게 없어 등록을 거부한다 */
   systemName: string;
 }
 
@@ -120,6 +120,21 @@ export async function createCustomer(
     throw new CustomerError(`이미 있는 고객사 코드입니다 (${code}).`);
   }
 
+  /**
+   * 🔒 운영시스템 없이는 만들지 않는다 (fail-closed, ADR-0010 §3 "반쪽짜리 고객사가 남지 않는다").
+   *    시스템 추가 화면이 없어 나중에 채울 수도 없고, 중복 검사가 비활성 행까지 세므로
+   *    같은 코드로 다시 등록할 수도 없다 — 한 번 만들면 영구히 쓸 수 없는 고객사가 된다.
+   */
+  const systemName = input.systemName.trim();
+  if (!systemName) {
+    throw new CustomerError(
+      "운영시스템 이름을 입력해 주세요 — 시스템이 없는 고객사는 신청 화면에서 고를 게 없습니다.",
+    );
+  }
+
+  const next = await select<{ n: number }>(
+    `SELECT COALESCE(MAX(OPER_SYS_ID), 0) + 1 AS n FROM COMPANY_OPER_SYSTEM`,
+  );
   const statements: WriteStatement[] = [
     {
       sql: `INSERT INTO COMPANY_MST
@@ -136,14 +151,7 @@ export async function createCustomer(
         { name: "priv", value: yn(input.defaultPrivate) },
       ],
     },
-  ];
-
-  const systemName = input.systemName.trim();
-  if (systemName) {
-    const next = await select<{ n: number }>(
-      `SELECT COALESCE(MAX(OPER_SYS_ID), 0) + 1 AS n FROM COMPANY_OPER_SYSTEM`,
-    );
-    statements.push({
+    {
       sql: `INSERT INTO COMPANY_OPER_SYSTEM
               (OPER_SYS_ID, COMPANY_CODE, SYSTEM_NAME, USE_YN, DEL_YN, SORT_ORD)
             VALUES (@id, @code, @nm, 'Y', 'N', 1)`,
@@ -152,8 +160,8 @@ export async function createCustomer(
         { name: "code", value: code },
         { name: "nm", value: systemName },
       ],
-    });
-  }
+    },
+  ];
 
   // 등록 사실을 남긴다 — 누가 언제 만든 고객사인지 알 수 있어야 한다
   statements.push(logRow(`고객사 등록: ${name} (${code})`, user));

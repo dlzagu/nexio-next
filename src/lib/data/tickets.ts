@@ -1,5 +1,10 @@
 import { PRIORITY, MODULE, labelOf, type ProgressCode } from "../codes";
-import { decodeEntities, plainPreview, toWallClockIso } from "../format";
+import {
+  decodeEntities,
+  plainPreview,
+  toDbStamp,
+  toWallClockIso,
+} from "../format";
 import { select, type Param } from "../db";
 import type {
   Comment,
@@ -261,11 +266,11 @@ export async function listRecentlyDone(
 ): Promise<TicketRow[]> {
   const params: Param[] = [];
   const scope = scopeClause(user, params);
-  // date('now') 는 UTC 다 — 저장값은 벽시계라 경계가 어긋난다. 앱에서 계산해 넘긴다
-  const since = new Date(Date.now() - days * 86_400_000);
+  // date('now') 는 UTC 다 — 저장값은 한국 벽시계라 경계가 어긋난다. 앱에서 **저장과 같은
+  // 시계(toDbStamp)** 로 계산해 넘긴다 (서버 로컬 시계로 만들면 Vercel 에서 9시간 밀린다)
   params.push({
     name: "since",
-    value: toWallClockIso(since)?.replace("T", " ") ?? "",
+    value: toDbStamp(new Date(Date.now() - days * 86_400_000)),
   });
 
   const rows = await select<RawRow>(

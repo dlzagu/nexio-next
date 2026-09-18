@@ -1,7 +1,7 @@
 import { select, write, type Param } from "../db";
-import { plainPreview, toWallClockIso } from "../format";
+import { plainPreview, toDbStamp, toWallClockIso } from "../format";
 import type { User } from "../types";
-import { visibleCommentGuard } from "./read-state";
+import { notMineSql, visibleCommentGuard } from "./read-state";
 import { scopeClause } from "./tickets";
 
 /**
@@ -51,10 +51,12 @@ const LIMIT = 20;
  */
 const WINDOW_DAYS = 30;
 
-/** 알림 창의 시작 시각. 저장값이 벽시계 TEXT 라 같은 형식으로 만들어 비교한다 */
+/**
+ * 알림 창의 시작 시각. 저장값이 한국 벽시계 TEXT 라 **같은 시계·같은 형식**으로 만들어 비교한다.
+ * ⚠️ 서버 로컬 시계(Vercel=UTC)로 만들면 경계가 9시간 밀린다 — 저장 스탬프(toDbStamp)와 같은 함수를 쓴다.
+ */
 function sinceStamp(): string {
-  const since = new Date(Date.now() - WINDOW_DAYS * 86_400_000);
-  return toWallClockIso(since)?.replace("T", " ") ?? "";
+  return toDbStamp(new Date(Date.now() - WINDOW_DAYS * 86_400_000));
 }
 
 export async function listNotifications(
@@ -71,7 +73,7 @@ export async function listNotifications(
       LEFT JOIN NX_OPTREPORT_READ_STATE rs
              ON rs.ECHONUM = r.PECHONUM AND rs.USER_ID = @me
      WHERE (d.CUSTPERSON = @me OR d.SUCCERSON = @me)
-       AND r.USERID <> @me
+       AND ${notMineSql("r")}
        AND r.ID > COALESCE(rs.LAST_SEEN_COMMENT_ID, 0)
        AND r.COMMDATE >= @since
        AND ${adminGuard}`;
@@ -141,7 +143,7 @@ export async function markNotificationsRead(
         SELECT 1 FROM NX_OPTREPORTR x
         LEFT JOIN NX_OPTREPORT_READ_STATE rs ON rs.ECHONUM = x.PECHONUM AND rs.USER_ID = @me
          WHERE x.PECHONUM = d.ECHONUM
-           AND x.USERID <> @me
+           AND ${notMineSql("x")}
            AND x.COMMDATE >= @since
            AND x.ID > COALESCE(rs.LAST_SEEN_COMMENT_ID, 0)
            AND ${visibleCommentGuard(user.role, "x")})`;

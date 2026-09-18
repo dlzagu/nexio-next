@@ -1,5 +1,5 @@
 import { FilterXSS } from "xss";
-import { decodeEntities } from "./format";
+import { unescapeStoredMarkup } from "./format";
 
 /**
  * 새니타이즈를 통과한 HTML 만 이 타입이 된다.
@@ -49,20 +49,6 @@ const ALLOWED_ATTR = [
   "colspan",
   "rowspan",
 ];
-
-/**
- * 🔴 저장값이 **이스케이프된 HTML** 인 레코드가 섞여 있다 (실측: `CAUSE`·`ANSWER`·
- *    `OKREMARKS`·`REMARKS` 가 `&lt;div&gt;` 형태). 그대로 렌더하면 태그가 글자로 보인다.
- *    실제 태그는 없고 이스케이프된 태그만 있으면 한 번 풀어준다.
- *
- * ⚠️ 순서가 중요하다 — **풀고 나서 새니타이즈**한다. 반대로 하면 걸러지지 않은
- *    마크업이 그대로 살아난다.
- */
-function unescapeStoredMarkup(raw: string): string {
-  const hasRealTags = /<\s*\/?[a-z]/i.test(raw);
-  const hasEscapedTags = /&lt;\s*\/?[a-z]/i.test(raw);
-  return !hasRealTags && hasEscapedTags ? decodeEntities(raw) : raw;
-}
 
 /**
  * 🔴 DOM 없이 도는 순수 파서(xss)를 쓴다 — DOMPurify 계열은 서버에서 jsdom 을 요구하고,

@@ -9,6 +9,7 @@ import {
 import { createTicket } from "@/lib/data/mutations";
 import { getTicket } from "@/lib/data/tickets";
 import { devWritesAllowed, select, writeDisabledReason } from "@/lib/db";
+import { canDo, newRequestBlockedReason } from "@/lib/permissions";
 import { attachmentsInputSchema, requestFormSchema } from "@/lib/schemas";
 import { currentUser, loadCustomerConfig } from "@/lib/session";
 
@@ -21,7 +22,7 @@ import { currentUser, loadCustomerConfig } from "@/lib/session";
  */
 const bodySchema = requestFormSchema.extend({
   /** 재신청 원본 접수번호 */
-  from: z.string().optional().default(""),
+  from: z.string().max(40).optional().default(""),
   attachments: attachmentsInputSchema,
 });
 
@@ -29,13 +30,11 @@ export async function POST(req: Request) {
   const user = await currentUser();
   if (!user) return NextResponse.json({ code: "NO_SESSION" }, { status: 401 });
 
-  // 외부업체는 배정받아 처리하는 쪽이지 신청 주체가 아니다
-  if (user.role === "VENDOR") {
+  // 외부업체는 배정받아 처리하는 쪽이지 신청 주체가 아니다 — 화면과 같은 허용 목록(fail-closed)
+  const blocked = newRequestBlockedReason(user);
+  if (blocked) {
     return NextResponse.json(
-      {
-        code: "FORBIDDEN",
-        message: "외부업체 계정은 신청을 등록할 수 없습니다.",
-      },
+      { code: "FORBIDDEN", message: blocked },
       { status: 403 },
     );
   }
@@ -43,7 +42,11 @@ export async function POST(req: Request) {
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
-      { code: "BAD_REQUEST", detail: parsed.error.issues },
+      {
+        code: "BAD_REQUEST",
+        message: parsed.error.issues[0]?.message,
+        detail: parsed.error.issues,
+      },
       { status: 400 },
     );
   }
@@ -54,6 +57,26 @@ export async function POST(req: Request) {
     user.role === "INTERNAL" ? form.custCode.trim() : user.custCode;
   if (!custCode) {
     return NextResponse.json({ code: "NO_CUSTOMER" }, { status: 400 });
+  }
+
+  /**
+   * 🔒 비활성(거래 종료) 고객사는 신청을 받지 않는다 — 업무 등록 라우트와 **같은 기준**이다.
+   *    비활성은 COMPANY_MST 만 바꾸므로 소속 계정·운영시스템은 그대로 살아 있다. 여기서 안 막으면
+   *    화면 어디에도 없는 고객사(필터 목록에서 빠진다)로 티켓이 계속 쌓인다 (ADR-0010).
+   */
+  const company = await select<{ COMPANY_CODE: string }>(
+    `SELECT COMPANY_CODE FROM COMPANY_MST
+      WHERE COMPANY_CODE = @cc AND COALESCE(ACTIVE,'Y') = 'Y'`,
+    [{ name: "cc", value: custCode }],
+  );
+  if (company.length === 0) {
+    return NextResponse.json(
+      {
+        code: "INVALID_CUSTOMER",
+        message: "거래가 종료된(비활성) 고객사라 신청을 받을 수 없습니다.",
+      },
+      { status: 400 },
+    );
   }
 
   const requester = await select<{ MBER_ID: string }>(
@@ -103,6 +126,21 @@ export async function POST(req: Request) {
         {
           code: "INVALID_PARENT",
           message: "재신청 원본을 찾을 수 없습니다.",
+        },
+        { status: 400 },
+      );
+    }
+    /**
+     * 🔒 볼 수 있다고 재신청할 수 있는 것은 아니다 — 재신청 규칙(canDo 'reapply': 종료건 ·
+     *    고객사 · 신청자 본인)을 **서버가 다시** 판정한다. 화면만 이 규칙으로 버튼을 그리면
+     *    진행 중인 건이나 동료의 건이 재신청 원본으로 연결돼 이력 링크가 틀어진다.
+     *    운영팀의 대리 재신청은 규칙에 없으므로 거부다(fail-closed).
+     */
+    if (!canDo("reapply", parent, user)) {
+      return NextResponse.json(
+        {
+          code: "INVALID_PARENT",
+          message: "재신청은 종료된 요청의 신청자 본인만 할 수 있습니다.",
         },
         { status: 400 },
       );

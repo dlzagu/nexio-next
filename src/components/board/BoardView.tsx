@@ -9,7 +9,14 @@ import { useUrlState } from "@/components/requests/useUrlState";
 import { Notice } from "@/components/ui/EmptyState";
 import { Segmented } from "@/components/ui/Tabs";
 import { cn } from "@/lib/cn";
-import { BOARD_COLUMNS, canMove, daysLeft } from "@/lib/board";
+import {
+  BOARD_COLUMNS,
+  canMove,
+  daysLeft,
+  planAfterRejection,
+  planMove,
+  quickMove,
+} from "@/lib/board";
 import {
   PRIORITY_TONE,
   type PriorityCode,
@@ -40,6 +47,9 @@ type BoardType = "mine" | "all";
  *     '서버 재판정'이 그 자리를 대신한다. 남이 먼저 옮겼으면 403 이 돌아온다)
  *
  * ♿ 드래그만 제공하면 키보드 사용자가 아무것도 못 한다 → 카드마다 '다음 단계' 버튼을 함께 둔다.
+ *
+ * 🔴 입력이 필요한 이동(해결안 제시 · 취소요청 판단)은 API 를 부르지 않고 **상세를 연다**
+ *    (planMove). 보드는 `{ action }` 만 보내므로 그대로 부르면 400 문장만 뜨고 카드는 그대로다.
  */
 export function BoardView({
   user,
@@ -95,38 +105,61 @@ export function BoardView({
     (c) => !c.optional || cardsOf(c.progress).length > 0,
   );
 
+  /** 상세 시트를 연다. tab 이 null 이면 상태별 기본 탭 — 지난번 탭이 URL 에 남지 않게 지운다 */
+  const openDetail = (echoNum: string, tab: string | null = null) =>
+    set({ open: echoNum, tab });
+
   const move = async (row: TicketRow, to: ProgressCode) => {
-    const action = canMove(row, to, user, configs[row.custCode]);
-    if (!action) return;
+    const plan = planMove(row, to, user, configs[row.custCode]);
+    if (!plan) return;
+    if (plan.kind === "detail") {
+      // 입력이 필요한 이동 — 쓸 자리로 데려가고, 왜 이동 대신 상세가 열렸는지 한 줄 남긴다
+      setMsg({ text: `${row.echoNum} · ${plan.note}`, failed: false });
+      openDetail(row.echoNum, plan.tab);
+      return;
+    }
+
     setBusy(row.echoNum);
     setMsg(null);
-    const res = await fetch(
-      `/api/tickets/${encodeURIComponent(row.echoNum)}/action`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action }),
-      },
-    );
-    const body = (await res.json().catch(() => ({}))) as {
-      message?: string;
-      code?: string;
-    };
-    setMsg({
-      text: body.message ?? body.code ?? `HTTP ${res.status}`,
-      failed: !res.ok && res.status !== 202,
-    });
-    setBusy(null);
-    if (res.ok) router.refresh();
-  };
+    // 🔴 네트워크 예외에서 busy 가 굳으면 그 카드는 영원히 흐린 채 눌리지 않는다 → finally
+    try {
+      const res = await fetch(
+        `/api/tickets/${encodeURIComponent(row.echoNum)}/action`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: plan.action }),
+        },
+      );
+      const body = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        code?: string;
+      };
 
-  /** 이 카드가 갈 수 있는 다음 컬럼 (키보드·클릭 경로) */
-  const nextOf = (row: TicketRow) =>
-    BOARD_COLUMNS.find(
-      (c) =>
-        c.progress !== row.progress &&
-        canMove(row, c.progress, user, configs[row.custCode]),
-    );
+      // 입력 부족으로 되돌아왔으면 같은 버튼을 다시 누르게 두지 않는다 — 쓸 곳을 연다
+      const retry = res.status === 400 ? planAfterRejection(body.code) : null;
+      if (retry) {
+        setMsg({ text: `${row.echoNum} · ${retry.note}`, failed: true });
+        openDetail(row.echoNum, retry.tab);
+        return;
+      }
+
+      // 🔴 성공은 200 뿐이다. 202(쓰기 잠김)는 res.ok 에 들지만 저장되지 않았다 —
+      //    새로고침하면 카드가 제자리라 "옮겼는데 돌아왔다"로 보인다. 안내만 남긴다.
+      setMsg({
+        text: body.message ?? body.code ?? `HTTP ${res.status}`,
+        failed: res.status !== 200 && res.status !== 202,
+      });
+      if (res.status === 200) router.refresh();
+    } catch (e) {
+      setMsg({
+        text: `${row.echoNum} · 옮기지 못했습니다 — ${e instanceof Error ? e.message : String(e)}`,
+        failed: true,
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
 
   return (
     <div className="flex min-h-0 flex-col gap-3 p-5">
@@ -230,7 +263,7 @@ export function BoardView({
                   </li>
                 ) : (
                   cards.map((r) => {
-                    const next = nextOf(r);
+                    const next = quickMove(r, user, configs[r.custCode]);
                     const left = daysLeft(r.scheDate, today);
                     return (
                       <li
@@ -273,7 +306,7 @@ export function BoardView({
                         <button
                           type="button"
                           className="text-12 text-fg-strong line-clamp-2 text-left hover:underline"
-                          onClick={() => set({ open: r.echoNum })}
+                          onClick={() => openDetail(r.echoNum)}
                         >
                           {r.title}
                         </button>
@@ -308,8 +341,12 @@ export function BoardView({
                               type="button"
                               className="btn btn-ghost btn-xs ml-auto"
                               disabled={busy === r.echoNum}
-                              onClick={() => move(r, next.progress)}
-                              title={`${next.label} 로 이동`}
+                              onClick={() => move(r, next.to)}
+                              title={
+                                next.plan.kind === "detail"
+                                  ? next.plan.note
+                                  : `다음 단계: ${next.label}`
+                              }
                             >
                               {next.label}
                               <ChevronRight size={11} aria-hidden />
@@ -327,7 +364,10 @@ export function BoardView({
       </div>
 
       {/* 상세는 조회 화면과 같은 시트를 그대로 쓴다 — 두 벌로 만들면 반드시 어긋난다 */}
-      <DetailSheet echoNum={opened} onClose={() => set({ open: null })} />
+      <DetailSheet
+        echoNum={opened}
+        onClose={() => set({ open: null, tab: null })}
+      />
 
       {intake ? (
         <TaskSheet

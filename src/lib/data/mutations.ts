@@ -1,6 +1,7 @@
+import { SUGGEST_CANCEL_LEAD, SUGGEST_CANCEL_TAIL } from "../cancel-suggestion";
 import { MODULE, labelOf, type ProgressCode } from "../codes";
 import { select, write, type Param, type WriteStatement } from "../db";
-import { toDbStamp } from "../format";
+import { josa, toDbStamp } from "../format";
 import { isBlankHtml, sanitize } from "../sanitize";
 import type { SolutionPatch } from "../schemas";
 import type { TicketAction, TicketDetail, User } from "../types";
@@ -29,6 +30,12 @@ interface Transition {
   log?: string;
   /** 이 전이에 반드시 채워져 있어야 하는 처리내역 항목 */
   requires?: { key: "answer" | "cause" | "process" | "result"; label: string };
+  /**
+   * 사유가 **필수**인 전이 — 값은 안내 문장에 쓰는 이름("반려 사유").
+   * 되돌릴 수 없거나 상대의 요청을 거절하는 판단은 이유 없이 한 줄로 남기지 않는다.
+   * 사유가 없는 반려는 신청자에게 '요청이 반려되었습니다' 한 줄만 남기고, 되물을 곳도 없다.
+   */
+  requiresReason?: string;
 }
 
 /**
@@ -46,6 +53,7 @@ const TRANSITIONS: Partial<Record<TicketAction, Transition>> = {
   reject: {
     to: "12",
     reasonCol: "AMEMO",
+    requiresReason: "반려 사유",
     log: "요청이 반려되었습니다.",
   },
   cancel: {
@@ -76,6 +84,8 @@ const TRANSITIONS: Partial<Record<TicketAction, Transition>> = {
     // 취소하지 않고 진행으로 되돌린다 — 요청 전 상태(3)가 유일한 출발점이다
     to: "3",
     reasonCol: "AMEMO",
+    // 신청자에게 '사유와 함께 처리가 계속됩니다'라고 약속했다(cancelHint) — 그 사유다
+    requiresReason: "계속 진행하는 사유",
     log: "취소 요청이 반려되어 처리를 계속합니다.",
   },
   receive: {
@@ -98,6 +108,12 @@ const TRANSITIONS: Partial<Record<TicketAction, Transition>> = {
       FINALSUCCER: u.id,
       FINALSUCCDATE: now,
     }),
+    /**
+     * 🔴 빈 처리결과로 종료하지 않는다. 해결안 제시(4)에서 답변을 지우고 저장한 뒤 완료하면
+     *    고객은 빈 처리결과 탭을 받고, 종료건이라 **아무도 다시 채울 수 없다**.
+     *    처리내역 없이 오는 완료(보드 드래그)는 저장된 답변으로 판정한다.
+     */
+    requires: { key: "answer", label: "답변" },
     log: "처리가 완료되었습니다.",
   },
   testComplete: {
@@ -109,7 +125,8 @@ const TRANSITIONS: Partial<Record<TicketAction, Transition>> = {
   save: {},
   // 취소 권유는 로그가 아니라 **사람 댓글**로 남긴다.
   // 시스템 기록은 접혀 있어서, 신청자에게 미읽음으로 보여야 하는 알림이 묻힌다.
-  suggestCancel: {},
+  // 사유 없는 권유는 "왜요?" 댓글 왕복을 부른다 — 권유가 줄이려던 바로 그 왕복이다.
+  suggestCancel: { requiresReason: "취소를 권유하는 사유" },
 };
 
 const SOLUTION_TEXT_COLS: Record<keyof SolutionPatch, string | null> = {
@@ -205,11 +222,45 @@ function touchReadState(echoNum: string, userId: string): WriteStatement {
   };
 }
 
+/**
+ * 조사 붙이기 — 괄호로 끝나는 말('정기 업무(매월 5일)')은 **괄호 앞 낱말**로 고른다.
+ * 그대로 josa() 에 넘기면 끝 글자가 ')' 라 받침을 몰라 '…)을(를)' 병기형이 된다.
+ */
+function withJosa(word: string, pair: "을/를" | "이/가"): string {
+  const base = word.replace(/\s*\([^()]*\)\s*$/, "");
+  if (!base || base === word) return josa(word, pair);
+  return word + josa(base, pair).slice(base.length);
+}
+
 /** 전이에 필요한 처리내역이 비어 있다 — 라우트가 400 으로 돌려준다 */
 export class SolutionRequiredError extends Error {
   constructor(public readonly label: string) {
-    super(`${label}을(를) 입력해야 이 단계로 넘어갈 수 있습니다.`);
+    super(`${josa(label, "을/를")} 입력해야 이 단계로 넘어갈 수 있습니다.`);
     this.name = "SolutionRequiredError";
+  }
+}
+
+/** 사유가 필수인 전이에 사유가 없다 — 라우트가 400 으로 돌려준다 */
+export class ReasonRequiredError extends Error {
+  constructor(public readonly label: string) {
+    super(`${josa(label, "을/를")} 입력해 주세요.`);
+    this.name = "ReasonRequiredError";
+  }
+}
+
+/**
+ * 내부 전용 글에 첨부를 붙이려 했다.
+ *
+ * 🔒 첨부 표(NX_OPTREPORT_FILE)에는 '어느 댓글에서 왔는지'가 없어 첨부는 **티켓 단위로**
+ *    공개된다. 글은 내부 전용 가드로 숨는데 파일은 첨부 탭·다운로드로 고객사와 외부업체에게
+ *    열린다. 매핑(파일 → 댓글·공개 범위)이 생기기 전까지는 **받지 않는 것**이 유일하게 안전하다.
+ */
+export class InternalAttachmentError extends Error {
+  constructor() {
+    super(
+      "내부 전용 댓글에는 파일을 첨부할 수 없습니다. 첨부는 고객사에게도 보이므로, 공개 댓글로 올리거나 첨부를 빼 주세요.",
+    );
+    this.name = "InternalAttachmentError";
   }
 }
 
@@ -218,6 +269,11 @@ export class UnsupportedActionError extends Error {
     super(`지원하지 않는 액션입니다: ${action}`);
     this.name = "UnsupportedActionError";
   }
+}
+
+/** 이 계층이 실행할 수 있는 액션인가 — 'reapply' 처럼 전이가 아닌 것은 신청 폼으로 간다 */
+export function supportsAction(action: TicketAction): boolean {
+  return action === "comment" || !!TRANSITIONS[action];
 }
 
 /**
@@ -238,6 +294,45 @@ export function missingSolutionField(
     ? solution[requires.key]
     : ticket.solution[requires.key];
   return isBlankHtml(value) ? requires.label : null;
+}
+
+/**
+ * 실행 전 입력 판정 — **아무것도 쓰지 않고 던지기만** 한다.
+ *
+ * 라우트가 쓰기 게이트 **앞에서** 부르고(쓰기가 꺼져 있어도 무엇이 틀렸는지는 알려준다 —
+ * 202 로 '통과'를 알리면 사용자는 맞게 쓴 줄 안다), applyAction·addComment 가 한 번 더
+ * 부른다(마지막 방어선). 규칙이 한 함수에 있어서 두 곳이 서로 다른 기준을 볼 수 없다.
+ */
+export function assertActionInput(opts: {
+  ticket: TicketDetail;
+  action: TicketAction;
+  solution?: SolutionPatch;
+  reason?: string;
+  comment?: { adminOnly: boolean; files?: IncomingFile[] };
+}): void {
+  const { ticket, action, solution, reason, comment } = opts;
+  if (!supportsAction(action)) throw new UnsupportedActionError(action);
+
+  const missing = missingSolutionField(action, solution, ticket);
+  if (missing) throw new SolutionRequiredError(missing);
+
+  const reasonLabel = TRANSITIONS[action]?.requiresReason;
+  if (reasonLabel && !reason?.trim()) {
+    throw new ReasonRequiredError(reasonLabel);
+  }
+
+  assertCommentAttachable(comment);
+}
+
+/** 내부 전용 글 + 첨부 = 거부 (InternalAttachmentError 주석) */
+function assertCommentAttachable(
+  comment: { adminOnly: boolean; files?: IncomingFile[] } | undefined,
+): void {
+  // 역할과 무관하게 '내부 전용으로 올려 달라'는 요청 자체를 본다 — 요청과 결과가 어긋나는
+  // 저장(외부업체의 내부 전용 체크가 공개로 강등되며 첨부까지 공개)을 조용히 하지 않는다
+  if (comment?.adminOnly && (comment.files?.length ?? 0) > 0) {
+    throw new InternalAttachmentError();
+  }
 }
 
 export interface ActionResult {
@@ -269,6 +364,9 @@ export async function applyAction(opts: {
 }): Promise<ActionResult> {
   const { ticket, user, action, solution, comment, reason, triage } = opts;
 
+  // 마지막 방어선. 같은 판정을 라우트가 **쓰기 게이트 앞에서** 한 번 더 한다
+  assertActionInput({ ticket, action, solution, reason, comment });
+
   if (action === "comment") {
     if (!comment) throw new UnsupportedActionError("comment (본문 없음)");
     await addComment({ echoNum: ticket.echoNum, user, ...comment });
@@ -277,10 +375,6 @@ export async function applyAction(opts: {
 
   const rule = TRANSITIONS[action];
   if (!rule) throw new UnsupportedActionError(action);
-
-  // 마지막 방어선. 같은 판정을 라우트가 **쓰기 게이트 앞에서** 한 번 더 한다
-  const missing = missingSolutionField(action, solution, ticket);
-  if (missing) throw new SolutionRequiredError(missing);
 
   const now = toDbStamp();
   const statements: WriteStatement[] = [];
@@ -335,7 +429,8 @@ export async function applyAction(opts: {
     }
   }
   if (rule.reasonCol && reason?.trim()) {
-    patch[rule.reasonCol] = sanitize(`<p>${reason.trim()}</p>`);
+    // 사유는 평문 칸이다 — 꺾쇠가 태그로 읽혀 잘리지 않게 평문 변환 정본을 지난다
+    patch[rule.reasonCol] = sanitize(toParagraphs(reason));
   }
 
   if (solution) {
@@ -373,14 +468,24 @@ export async function applyAction(opts: {
     );
   }
   if (action === "suggestCancel") {
-    const tail = reason?.trim() ? ` ${reason.trim()}` : "";
+    /**
+     * 권유는 신청자가 **지금 누를 수 있는 버튼**을 가리킨다. 권유는 신청자에게 취소 수단이
+     * 있는 단계(1~3)에서만 열린다(canDo) — 수단이 없는 단계에서 권유하면 권유는 "신청자만
+     * 취소할 수 있다", 신청자 화면은 "담당자에게 문의하라"로 서로를 가리키는 순환이 된다.
+     */
+    const how =
+      ticket.progress === "3"
+        ? "상단의 '취소 요청'을 누르면 담당자 확인 후 취소됩니다."
+        : "상단의 '취소'를 누르면 바로 취소됩니다.";
     statements.push(
       insertComment({
         echoNum: ticket.echoNum,
         author: user,
         body: sanitize(
-          `<p>담당자가 요청 취소를 권유했습니다.${tail}</p>` +
-            `<p>취소 실행은 신청자 본인만 할 수 있습니다.</p>`,
+          // 화면의 권유 카드가 이 두 문장으로 판별한다 — 문구는 상수만 고친다
+          `<p>${SUGGEST_CANCEL_LEAD}</p>` +
+            toParagraphs(reason ?? "") +
+            `<p>${SUGGEST_CANCEL_TAIL} 할 수 있습니다 — ${how}</p>`,
         ),
         adminOnly: false,
         isLog: false,
@@ -430,6 +535,8 @@ export async function addComment(opts: {
   adminOnly: boolean;
   files?: IncomingFile[];
 }): Promise<void> {
+  // 🔒 applyAction 을 거치지 않는 호출자도 같은 판정을 지난다 (호출자가 잊을 수 없게)
+  assertCommentAttachable(opts);
   const at = toDbStamp();
   await write([
     insertComment({
@@ -466,8 +573,14 @@ export interface NewRequestInput {
   requesterId: string;
   systemId: string;
   title: string;
+  /** 평문(textarea). 저장 때 이스케이프해 문단으로 감싼다 (toParagraphs) */
   symptom: string;
   content: string;
+  /**
+   * **이미 문단 HTML 인** 본문 — 정기 업무 템플릿처럼 저장된 HTML 을 다시 쓰는 경우.
+   * 주면 symptom·content 조립을 건너뛴다. 평문 경로에 HTML 을 넣으면 태그가 글자로 보인다.
+   */
+  bodyHtml?: string;
   moduleCode: string;
   priority: string;
   scheDate: string;
@@ -518,14 +631,16 @@ export interface NewRequestInput {
   };
 }
 
-const pad2 = (n: number) => String(n).padStart(2, "0");
-
 /**
  * 접수번호 채번. 형식은 시드와 동일한 `<접두>-<YYYYMM>-<일련 3자리>`.
  * 접두는 COMPANY_MST 에 없어서(원본에도 없다) **그 고객사의 기존 번호에서 이어받는다.**
  * 첫 번호가 없는 고객사는 코드 앞 두 글자로 시작한다.
+ *
+ * @param reqDate 이 건의 REQDATE 스탬프('YYYY-MM-DD HH:MM:SS'). 🔴 Date 를 받아 로컬 필드로
+ *   연·월을 뽑으면 서버(UTC)에서 KST 월초 새벽의 요청이 **지난달 번호**를 받는다 —
+ *   REQDATE 는 10월인데 번호는 9월. 번호와 신청일이 같은 문자열에서 나오게 한다.
  */
-async function nextEchoNum(custCode: string, at: Date): Promise<string> {
+async function nextEchoNum(custCode: string, reqDate: string): Promise<string> {
   const seen = await select<{ ECHONUM: string }>(
     `SELECT ECHONUM FROM NX_OPTREPORTD WHERE CUSTCODE = @cc
       ORDER BY REQDATE DESC, ECHONUM DESC LIMIT 1`,
@@ -538,7 +653,7 @@ async function nextEchoNum(custCode: string, at: Date): Promise<string> {
       .slice(0, 2)
       .toUpperCase() ||
     "NX";
-  const key = `${prefix}-${at.getFullYear()}${pad2(at.getMonth() + 1)}`;
+  const key = `${prefix}-${reqDate.slice(0, 4)}${reqDate.slice(5, 7)}`;
 
   const last = await select<{ ECHONUM: string }>(
     `SELECT ECHONUM FROM NX_OPTREPORTD WHERE ECHONUM LIKE @k
@@ -554,9 +669,8 @@ export async function createTicket(
   input: NewRequestInput,
   user: User,
 ): Promise<{ echoNum: string; progress: ProgressCode }> {
-  const at = new Date();
-  const now = toDbStamp(at);
-  const echoNum = await nextEchoNum(input.custCode, at);
+  // 시계는 하나 — 한국 벽시계 스탬프 하나에서 신청일·번호·이력 시각이 모두 나온다
+  const now = toDbStamp();
   const proxy = input.intake;
   /**
    * 승인 단계를 쓰는 고객사는 대기(1)에서 승인권자를 기다린다.
@@ -569,8 +683,18 @@ export async function createTicket(
       : "2";
   /** 완료로 기록하는 건이면 그 시각이 곧 완료일이다 (안 주면 지금) */
   const doneAt = progress === "9" ? (proxy?.doneAt ?? now) : null;
+  /**
+   * 🔴 끝낸 날보다 늦게 **받았다고** 적지 않는다. 지난 일을 나중에 기록하면(전화로 받아
+   * 그 자리에서 처리한 건) 받은 날 = 끝낸 날이다. 신청일을 '지금'으로 두면 완료일 < 신청일이
+   * 되어 처리기간이 음수가 되고, 대시보드의 '1일 이내'로 잘못 들어간다.
+   * 번호의 연·월도 이 신청일을 따른다 (nextEchoNum 주석).
+   */
+  const reqDate = doneAt && doneAt < now ? doneAt : now;
+  const echoNum = await nextEchoNum(input.custCode, reqDate);
 
-  const content = sanitize(composeBody(input.symptom, input.content));
+  const content = sanitize(
+    input.bodyHtml ?? composeBody(input.symptom, input.content),
+  );
 
   await write([
     {
@@ -599,7 +723,7 @@ export async function createTicket(
         { name: "person", value: input.requesterId },
         // 대리 등록에서 담당을 정했으면 접수까지 끝난 셈이라 담당자를 함께 찍는다
         { name: "assignee", value: proxy?.assignTo ?? null },
-        { name: "reqdate", value: now },
+        { name: "reqdate", value: reqDate },
         {
           name: "sche",
           value: input.scheDate ? `${input.scheDate} 00:00:00` : null,
@@ -635,7 +759,7 @@ export async function createTicket(
        * 여기 안 남기면 나중에 "이 건 누가 왜 만들었나"를 알 방법이 사라진다.
        */
       body: proxy
-        ? `${proxy.sourceLabel}을(를) ${user.name}이(가) 대신 등록했습니다.` +
+        ? `${withJosa(proxy.sourceLabel, "을/를")} ${withJosa(user.name, "이/가")} 대신 등록했습니다.` +
           (proxy.assignTo
             ? ` 담당자는 ${proxy.assignToName ?? proxy.assignTo}입니다.`
             : "") +

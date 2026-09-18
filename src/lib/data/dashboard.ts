@@ -9,9 +9,29 @@ import { listTickets, scopeClause } from "./tickets";
  * 대시보드. 원본은 페이지당 19회+ 호출(중복 포함)했다 —
  * 여기서 서버측 병렬 조회 1회로 묶는다.
  *
- * ⚠️ 위젯 하나가 죽어도 대시보드 전체가 죽지 않게 allSettled 로 모은다.
- *    실패한 위젯은 빈 값으로 내리고 화면에서 개별 상태로 표시한다.
+ * ⚠️ 위젯 하나가 죽어도 대시보드 전체가 죽지 않게 위젯마다 따로 받아 낸다.
+ *    실패한 위젯은 빈 값으로 채우되 **`failed` 에 이름을 올려** 화면이 '0건'과 구분한다.
+ *    (빈 값만 내리면 화면은 '0'·'건이 없습니다'를 그린다 — 공유 DB 에 표가 빠진 채
+ *     배포되면 다른 화면은 500 인데 대시보드만 200 으로 "할 일 없음"을 말한다)
  */
+
+/** 조회를 따로 받는 위젯 단위 — 화면이 실패 표시를 붙이는 단위와 같다 */
+export type DashboardWidget =
+  | "cards"
+  | "myPending"
+  | "companyUnresolved"
+  | "recent"
+  | "trend"
+  | "status"
+  | "duration"
+  | "topCustomers"
+  | "assigneePerf"
+  | "notices";
+
+export interface DashboardView extends DashboardData {
+  /** 조회에 실패한 위젯. 여기 오른 위젯의 값은 비어 있어도 '없음'이 아니다 */
+  failed: DashboardWidget[];
+}
 
 const TERMINAL = "'9','11','12'";
 const NOT_MIGRATION = "COALESCE(d.REQTYPE,'') <> 'MIGRATION'";
@@ -33,17 +53,38 @@ function baseFilters(over: Partial<TicketFilters> = {}): TicketFilters {
   };
 }
 
-async function settle<T>(p: Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await p;
-  } catch (e) {
-    // 조용히 삼키지 않는다 — 서버 로그에 남긴다
-    console.error("[dashboard widget]", e instanceof Error ? e.message : e);
-    return fallback;
-  }
+/**
+ * '내 미처리' 카드와 그 위젯의 [전체] 링크가 **함께 쓰는** 주소.
+ * 🔴 카드는 미완료 + 내 건을 센다. view=mine 은 종료건과 '내가 신청한 건'까지 담아
+ *    숫자와 목록이 갈라진다(실측 25 vs 167). 두 곳이 각자 주소를 적으면 한쪽만 고쳐진다.
+ * "내 건"의 축은 getDashboard 의 MINE_COL 과 같다 — 고객사는 신청자, 처리자는 담당자.
+ */
+export function myPendingHref(user: Pick<User, "id" | "role">): string {
+  const key = user.role === "CUSTOMER" ? "requester" : "assignee";
+  return `/requests?view=open&${key}=${encodeURIComponent(user.id)}`;
 }
 
-export async function getDashboard(user: User): Promise<DashboardData> {
+export async function getDashboard(user: User): Promise<DashboardView> {
+  const failed: DashboardWidget[] = [];
+  /** 실패는 서버 로그 + failed 목록 두 곳에 남긴다 — 로그만 남기면 화면은 0 을 그린다 */
+  const settle = async <T>(
+    name: DashboardWidget,
+    p: Promise<T>,
+    fallback: T,
+  ): Promise<T> => {
+    try {
+      return await p;
+    } catch (e) {
+      console.error(
+        "[dashboard widget]",
+        name,
+        e instanceof Error ? e.message : e,
+      );
+      failed.push(name);
+      return fallback;
+    }
+  };
+
   /**
    * "내 건"의 정의가 역할마다 다르다.
    * 고객사 사용자에게는 **내가 낸 요청**(CUSTPERSON), 처리자에게는 **내가 담당한 건**(SUCCERSON).
@@ -279,36 +320,40 @@ export async function getDashboard(user: User): Promise<DashboardData> {
     assigneePerf,
     notices,
   ] = await Promise.all([
-    settle(cardsQ(), {
+    settle("cards", cardsQ(), {
       myPending: 0,
       inProgress: 0,
       awaitingSolution: 0,
       unreadComments: 0,
     }),
-    settle(listTickets(mineListFilters, user), {
+    settle("myPending", listTickets(mineListFilters, user), {
       rows: [],
       total: 0,
       truncated: false,
       clientSortable: true,
     }),
-    settle(listTickets(baseFilters({ view: "open" }), user), {
-      rows: [],
-      total: 0,
-      truncated: false,
-      clientSortable: true,
-    }),
-    settle(listTickets(baseFilters({ view: "all" }), user), {
+    settle(
+      "companyUnresolved",
+      listTickets(baseFilters({ view: "open" }), user),
+      {
+        rows: [],
+        total: 0,
+        truncated: false,
+        clientSortable: true,
+      },
+    ),
+    settle("recent", listTickets(baseFilters({ view: "all" }), user), {
       rows: [],
       total: 0,
       truncated: false,
       clientSortable: false,
     }),
-    settle(trendQ(), []),
-    settle(statusQ(), { open: [], completed: 0 }),
-    settle(durationQ(), []),
-    settle(topCustQ(), []),
-    settle(assigneeQ(), []),
-    settle(noticeQ(), []),
+    settle("trend", trendQ(), []),
+    settle("status", statusQ(), { open: [], completed: 0 }),
+    settle("duration", durationQ(), []),
+    settle("topCustomers", topCustQ(), []),
+    settle("assigneePerf", assigneeQ(), []),
+    settle("notices", noticeQ(), []),
   ]);
 
   return {
@@ -328,5 +373,6 @@ export async function getDashboard(user: User): Promise<DashboardData> {
     assigneePerf,
     notices,
     recent: recentList.rows.slice(0, 5),
+    failed,
   };
 }

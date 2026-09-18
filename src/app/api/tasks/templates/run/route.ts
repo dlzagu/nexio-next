@@ -64,7 +64,10 @@ export async function POST() {
         systemId: t.systemId,
         title: `${t.title} (${ym})`,
         symptom: "",
-        content: templateBody(t, ym),
+        content: "",
+        // 템플릿 본문은 이미 문단 HTML 이다 — 평문 경로(toParagraphs)에 넣으면 이스케이프돼
+        // 화면에 '<p>' 가 글자로 보인다
+        bodyHtml: templateBody(t, ym),
         moduleCode: t.moduleCode,
         priority: t.priorityCode,
         // 매월 며칠 기준인지가 곧 기한이다 — 없으면 보드에서 D-day 가 안 잡힌다

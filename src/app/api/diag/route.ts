@@ -4,6 +4,7 @@ import { getMeta } from "@/lib/data/meta";
 import { getTicket, listTickets } from "@/lib/data/tickets";
 import {
   dbHealth,
+  demoClockState,
   devWritesAllowed,
   isSharedDb,
   writeDisabledReason,
@@ -29,6 +30,27 @@ export async function GET() {
   };
 
   await step("db", async () => await dbHealth());
+
+  /**
+   * 데모 시계(ADR-0012). 기준 이후 하루 넘게 밀려 있으면 '최근 N일' 화면이 전부 비기 시작한다.
+   * 표가 없는 것(옛 공유 DB)·오류는 장애다 — 화면은 멀쩡히 뜨는데 날마다 조용히 비어 가기 때문에
+   * HTTP 상태로 드러내야 한다. 쓰기 잠김으로 못 민 것은 정상 상태라 `ok` 를 쓰지 않는다.
+   */
+  await step("clock", async () => {
+    const s = await demoClockState();
+    if (s.state === "missing-table") {
+      throw new Error(
+        "데모 시계 표(NX_DEMO_CLOCK)가 없습니다 — npm run db:sync:remote 로 만드세요",
+      );
+    }
+    if (s.state === "unknown") {
+      throw new Error(
+        "데모 시계의 기준을 알 수 없습니다 (기준 행·시드 공지가 없거나 역산 값이 미래다)",
+      );
+    }
+    if (s.state === "error") throw new Error(`데모 시계 오류: ${s.error}`);
+    return s;
+  });
 
   // 쓰기가 되는 상태인가 — 화면이 202 를 돌려줄 때 "왜"를 여기서 확인한다.
   // ⚠️ `ok` 키를 쓰지 않는다. 아래 allOk 가 그걸 **장애로 읽어** 진단이 500 이 된다
@@ -145,6 +167,10 @@ export async function GET() {
 
   await step("dashboard", async () => {
     const d = await getDashboard(user);
+    // 위젯 하나가 죽어도 화면은 뜬다(allSettled) — 그래서 진단은 여기서 장애로 올려야 보인다
+    if (d.failed.length) {
+      throw new Error(`대시보드 위젯 조회 실패: ${d.failed.join(", ")}`);
+    }
     return {
       cards: d.cards,
       myPending: d.myPending.length,

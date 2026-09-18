@@ -1,28 +1,55 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Info } from "lucide-react";
+import { Info, MessageSquare } from "lucide-react";
 import { StatusBadge } from "@/components/ui/Badge";
 import { InlineError, Notice } from "@/components/ui/EmptyState";
 import { RichTextBlock } from "@/components/ui/RichText";
 import { Modal, Sheet } from "@/components/ui/Sheet";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Combobox } from "@/components/ui/Combobox";
-import { Stepper } from "@/components/ui/Stepper";
+import { Stepper, extendedStagesOf } from "@/components/ui/Stepper";
 import { TabPanel, Tabs, type TabDef } from "@/components/ui/Tabs";
 import { cn } from "@/lib/cn";
-import { MODULE, USER_ROLE_LABEL, isTerminal } from "@/lib/codes";
+import {
+  MODULE,
+  USER_ROLE_LABEL,
+  isTerminal,
+  type UserRole,
+} from "@/lib/codes";
 import { fmtDate, fmtDateTime, fmtRelative } from "@/lib/format";
 import { announceReadStateChanged } from "@/lib/read-signal";
 import { isBlankHtml } from "@/lib/sanitize";
-import { fmtBytes } from "@/lib/attachments";
+import { fmtBytes, payloadTooLargeMessage } from "@/lib/attachments";
 import type { ActionSpec } from "@/lib/permissions";
 import type { Option } from "@/lib/data/meta";
-import type { AttachmentMeta, CustomerConfig, TicketDetail } from "@/lib/types";
+import type {
+  AttachmentMeta,
+  CustomerConfig,
+  TicketAction,
+  TicketDetail,
+} from "@/lib/types";
 import { toAttachmentPayload } from "./AttachPicker";
 import { Composer } from "./Composer";
+import {
+  ConfirmActionModal,
+  confirmPayload,
+  needsConfirm,
+  reasonProblem,
+  type ConfirmableAction,
+} from "./ConfirmActionModal";
+import {
+  CONFIRM_SOLUTION_COMMENT,
+  CancelSuggestionCard,
+  DECLINE_CANCEL_COMMENT,
+  cancelSuggestionFor,
+  customerNextStep,
+  hiddenStageNotice,
+  historyItems,
+  initialTab,
+} from "./DetailFlow";
 import { SolutionPanel, toDraft, type SolutionDraft } from "./SolutionPanel";
 
 interface Payload {
@@ -38,7 +65,25 @@ interface Payload {
     postInternalComment: boolean;
     editSolutionReason: string | null;
   };
+  /**
+   * 누가 보고 있는가 — 고객에게만 띄우는 안내(해결안 확인)를 가른다.
+   * 라우트가 내려 주지 않으면 그 안내를 띄우지 않는다(모르면 기존 문구 — fail-closed).
+   */
+  viewer?: { id: string; role: UserRole };
 }
+
+/** fetch 가 응답 대신 예외를 던졌을 때(네트워크 끊김) 사용자에게 보이는 문장 */
+const NETWORK_FAIL =
+  "네트워크 오류로 요청을 보내지 못했습니다. 다시 시도해 주세요.";
+
+type Busy =
+  | "save"
+  | "comment"
+  | "receive"
+  | "propose"
+  | "complete"
+  | "confirm"
+  | "action";
 
 /**
  * 상세를 열면 그 건의 미읽음을 내린다.
@@ -84,6 +129,7 @@ export function DetailSheet({
    * (동기 setState-in-effect 는 연쇄 렌더를 만든다).
    */
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loaded, setLoaded] = useState<{
     echoNum: string;
     data?: Payload;
@@ -92,6 +138,8 @@ export function DetailSheet({
   const [tabPick, setTabPick] = useState<{
     echoNum: string;
     tab: string;
+    /** 고를 때의 URL tab — URL 이 다른 탭을 지시하면 이 고름은 끝난 것이다 */
+    urlTab: string | null;
   } | null>(null);
   const [actionState, setActionState] = useState<{
     echoNum: string;
@@ -146,15 +194,24 @@ export function DetailSheet({
 
   const attachments = data?.attachments ?? [];
 
-  // 상태 4(해결안제시) 이상이면 고객이 실제로 읽는 '처리결과'를 기본 탭으로
-  const defaultTab = (() => {
-    if (!t) return "request";
-    const n = Number(t.progress);
-    return n >= 4 && n !== 10 ? "solution" : "request";
-  })();
+  // URL 의 tab(보드가 입력이 필요한 이동에서 넘긴다) → 없으면 상태 4 이상은 '처리결과'.
+  // 파생값이다 — 사용자가 탭을 고르면 tabPick 이 이긴다. 단 **같은 URL 아래에서 고른 것만**:
+  // 예전 고름(댓글 탭)이 남아 보드의 '해결안 쓰기'(?tab=solution)를 이기면, 답변을 쓸 곳으로
+  // 데려간다는 약속이 깨진다(리뷰 재현 — 시트는 닫혀도 마운트된 채라 상태가 남는다).
+  const urlTab = searchParams.get("tab");
+  const defaultTab = t
+    ? initialTab({
+        progress: t.progress,
+        urlTab,
+        hasFiles: attachments.length > 0,
+      })
+    : "request";
   const tab =
-    echoNum && tabPick?.echoNum === echoNum ? tabPick.tab : defaultTab;
-  const setTab = (v: string) => echoNum && setTabPick({ echoNum, tab: v });
+    echoNum && tabPick?.echoNum === echoNum && tabPick.urlTab === urlTab
+      ? tabPick.tab
+      : defaultTab;
+  const setTab = (v: string) =>
+    echoNum && setTabPick({ echoNum, tab: v, urlTab });
   const tabs: TabDef[] = [
     { value: "request", label: "요청내용" },
     { value: "solution", label: "처리결과" },
@@ -204,9 +261,90 @@ export function DetailSheet({
           files: [] as File[],
         };
 
-  const [busy, setBusy] = useState<
-    null | "save" | "comment" | "receive" | "propose"
-  >(null);
+  /**
+   * 진행 중 표시도 echoNum 과 함께 담는다. 다른 건으로 넘어가면 이전 건의 '처리 중'이
+   * 따라오지 않는다(같은 시트 인스턴스로 여러 건을 연다).
+   */
+  const [busyState, setBusyState] = useState<{
+    echoNum: string;
+    what: Busy;
+  } | null>(null);
+  /** 액션 진행 중 — 댓글 전송은 따로 센다(아래 commentBusy) */
+  const busy =
+    echoNum && busyState?.echoNum === echoNum ? busyState.what : null;
+  /**
+   * 댓글 전송 중. 🔴 액션과 **칸을 나눈다** — 한 칸이면 첨부 업로드로 몇 초 걸리는 댓글 전송 중에
+   *    액션을 누르는 순간 '등록 중…'이 풀려 같은 댓글을 두 번 보낼 수 있었다(리뷰 재현).
+   *    댓글과 액션은 서로를 막지 않는다 — 각자 자기 버튼만 잠근다.
+   */
+  const [commentBusyFor, setCommentBusyFor] = useState<string | null>(null);
+  const commentSending = !!echoNum && commentBusyFor === echoNum;
+  /** 등록에 성공한 횟수 — 입력창을 새로 만들어 실행 취소 이력까지 비운다 */
+  const [commentSent, setCommentSent] = useState(0);
+
+  /**
+   * 🔴 busy 는 **finally 에서** 푼다. 예전엔 `setBusy(x); await …; setBusy(null)` 이라
+   *    예외가 나면 버튼이 '접수 중…'으로 굳었고, 새로고침 말고는 풀 방법이 없었다(FE-9).
+   */
+  const withBusy = async <T,>(
+    what: Busy,
+    fn: () => Promise<T>,
+  ): Promise<T | undefined> => {
+    if (!t) return undefined;
+    const target = t.echoNum;
+    if (what === "comment") setCommentBusyFor(target);
+    else setBusyState({ echoNum: target, what });
+    try {
+      return await fn();
+    } finally {
+      // 그 사이 다른 건에서 시작한 작업의 표시는 건드리지 않는다
+      if (what === "comment") {
+        setCommentBusyFor((cur) => (cur === target ? null : cur));
+      } else {
+        setBusyState((cur) =>
+          cur?.echoNum === target && cur.what === what ? null : cur,
+        );
+      }
+    }
+  };
+
+  /* ── 댓글 입력창으로 데려가기 — 초안을 채워 주되 전송은 사용자가 누른다 ── */
+  const [composerFocus, setComposerFocus] = useState<{
+    echoNum: string;
+    n: number;
+  } | null>(null);
+  const focusKey =
+    echoNum && composerFocus?.echoNum === echoNum ? composerFocus.n : 0;
+  const askInComment = (html: string) => {
+    if (!t) return;
+    // 쓰던 글이 있으면 덮지 않는다 — 조용히 지우는 것이 더 큰 사고다
+    if (isBlankHtml(comment.html)) {
+      setCommentState({ ...comment, echoNum: t.echoNum, html });
+    }
+    setComposerFocus({ echoNum: t.echoNum, n: focusKey + 1 });
+  };
+
+  /* ── 되돌릴 수 없는 액션의 확인 모달 (UX-7) ── */
+  const [confirmState, setConfirmState] = useState<{
+    echoNum: string;
+    action: ConfirmableAction;
+    reason: string;
+  } | null>(null);
+  const confirm =
+    echoNum && confirmState?.echoNum === echoNum ? confirmState : null;
+  const openConfirm = (action: ConfirmableAction) => {
+    if (!t) return;
+    // 지난 액션의 문장이 모달 안에 딸려 들어가지 않게 비운다
+    setActionState(null);
+    setConfirmState({ echoNum: t.echoNum, action, reason: "" });
+  };
+  const submitConfirm = async () => {
+    if (!confirm || reasonProblem(confirm.action, confirm.reason)) return;
+    const ok = await withBusy("confirm", () =>
+      runAction(confirm.action, confirmPayload(confirm.action, confirm.reason)),
+    );
+    if (ok) setConfirmState(null);
+  };
 
   /**
    * 접수 폼. 고객은 운영시스템·모듈을 모르는 경우가 많아 **빈 값이나 잘못된 값**으로 들어온다 —
@@ -232,55 +370,88 @@ export function DetailSheet({
   };
   const submitTriage = async () => {
     if (!triage) return;
-    setBusy("receive");
-    const ok = await runAction("receive", {
-      triage: {
-        systemId: triage.systemId,
-        moduleCode: triage.moduleCode,
-        expeTime: triage.expeTime,
-        scheDate: triage.scheDate,
-      },
-    });
-    setBusy(null);
+    const ok = await withBusy("receive", () =>
+      runAction("receive", {
+        triage: {
+          systemId: triage.systemId,
+          moduleCode: triage.moduleCode,
+          expeTime: triage.expeTime,
+          scheDate: triage.scheDate,
+        },
+      }),
+    );
     if (ok) setTriage(null);
   };
 
+  /**
+   * @returns 서버가 받아들였는가 (200 저장 · 202 판정만 통과). 모달을 닫을지 정한다.
+   */
   const runAction = async (
-    action: string,
+    action: TicketAction,
     payload?: Record<string, unknown>,
-  ) => {
-    if (!t) return;
+  ): Promise<boolean> => {
+    if (!t) return false;
     const target = t.echoNum;
     setActionState({ echoNum: target, msg: "처리 중…" });
-    const res = await fetch(
-      `/api/tickets/${encodeURIComponent(target)}/action`,
-      {
+
+    let res: Response;
+    try {
+      res = await fetch(`/api/tickets/${encodeURIComponent(target)}/action`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action, ...payload }),
-      },
-    );
+      });
+    } catch (e) {
+      // 🔴 네트워크가 끊기면 fetch 는 응답 대신 예외를 던진다. 삼키지 않는다 —
+      //    '처리 중…'으로 굳히지 않고 사용자 문장으로 바꾸고, 원인은 콘솔에 남긴다.
+      console.error("[액션 요청 실패]", action, e);
+      setActionState({ echoNum: target, msg: NETWORK_FAIL });
+      return false;
+    }
     const body = (await res.json().catch(() => ({}))) as {
       message?: string;
       code?: string;
       detail?: unknown;
     };
-    setActionState({
-      echoNum: target,
-      msg: body.message ?? body.code ?? `HTTP ${res.status}`,
-    });
+    const msg =
+      res.status === 413
+        ? payloadTooLargeMessage()
+        : (body.message ?? body.code ?? `HTTP ${res.status}`);
+    setActionState({ echoNum: target, msg });
 
     // 🔴 202(WRITE_DISABLED)는 **저장되지 않았다**는 뜻이다. res.ok 는 202 를 포함하므로
     //    그걸로 성공을 판정하면 쓰기가 꺼진 기본 설정에서 사용자가 쓰던 초안을 지운다.
     const saved = res.status === 200;
     if (saved) {
-      // 초안을 버리고 저장된 값을 다시 읽는다. 안 그러면 방금 저장한 내용이
-      // '변경 있음' 으로 남아 두 번 저장하게 된다.
-      setDraftState(null);
-      setCommentState(null);
-      const fresh = await fetch(`/api/tickets/${encodeURIComponent(target)}`);
-      if (fresh.ok) {
-        setLoaded({ echoNum: target, data: (await fresh.json()) as Payload });
+      // **이 요청이 실어 보낸 초안만** 버리고 저장된 값을 다시 읽는다. 안 그러면 방금 저장한
+      // 내용이 '변경 있음'으로 남아 두 번 저장하게 된다.
+      // ⚠️ 댓글을 달았다고 쓰던 처리내역까지 버리면 안 된다 — 에디터가 값을 따라가므로
+      //    화면에서도 글이 사라진다(해결안을 쓰다가 댓글을 달면 해결안이 날아갔다).
+      if (action === "comment") {
+        setCommentState(null);
+        setCommentSent((n) => n + 1);
+      }
+      let refreshed = false;
+      try {
+        const fresh = await fetch(`/api/tickets/${encodeURIComponent(target)}`);
+        if (fresh.ok) {
+          const next = (await fresh.json()) as Payload;
+          // 🔴 처리내역 초안은 새 값과 **같은 순간에** 버린다. 먼저 버리면 재조회를 기다리는 동안
+          //    한 번 그려지는 화면이 저장 전 값이라, 값을 따라가는 에디터가 방금 쓴 글을 지웠다가
+          //    되살린다 — 그 사이 이어 쓰면 옛 글 위에 쌓인다(리뷰 재현)
+          setLoaded({ echoNum: target, data: next });
+          if (payload?.solution !== undefined) setDraftState(null);
+          refreshed = true;
+        }
+      } catch (e) {
+        console.error("[상세 다시 읽기 실패]", target, e);
+      }
+      if (!refreshed) {
+        // 저장은 끝났다 — 다시 읽기만 실패했다. 초안은 남겨 둔다(저장한 그대로라 화면이 맞다)
+        setActionState({
+          echoNum: target,
+          msg: `${msg} 화면을 새로 읽지 못했습니다 — 새로고침해 주세요.`,
+        });
       }
       // 목록·카운트·대시보드는 서버 컴포넌트라 별도로 갱신해야 한다
       router.refresh();
@@ -304,30 +475,106 @@ export function DetailSheet({
       });
       return;
     }
-    setBusy("propose");
-    await runAction("propose", { solution: draft });
-    setBusy(null);
+    await withBusy("propose", () => runAction("propose", { solution: draft }));
   };
 
+  /**
+   * 완료 처리도 해결안 제시처럼 **지금 쓴 처리내역을 함께** 보낸다 (DATA-2).
+   * 서버는 완료에 답변을 요구한다 — 미저장 답변을 두고 저장값(빈 답변)으로 판정받으면
+   * 방금 쓴 글이 있는데도 400 이 난다. 비어 있으면 서버에 묻지 않고 쓸 곳으로 데려간다.
+   */
+  const complete = async () => {
+    if (isBlankHtml(draft?.answer)) {
+      setTab("solution");
+      setActionState({
+        echoNum: t?.echoNum ?? "",
+        msg: "‘답변’을 입력해야 완료 처리할 수 있습니다. 고객이 실제로 읽는 부분입니다.",
+      });
+      return;
+    }
+    await withBusy("complete", () =>
+      runAction("complete", { solution: draft }),
+    );
+  };
+
+  /**
+   * 🔴 하단 액션바의 '저장'도 **이 함수**를 탄다. 예전엔 액션바가 초안 없이 `save` 만 보내
+   *    서버가 아무것도 안 바꾸고 200 을 줬고, 화면은 그걸 성공으로 읽어 **쓰던 초안을 버렸다**
+   *    ("처리내역을 저장했습니다" 후 새로고침하면 빈칸 — 실측).
+   */
   const saveSolution = async () => {
     if (!draft) return;
-    setBusy("save");
-    await runAction("save", { solution: draft });
-    setBusy(null);
+    if (!dirty) {
+      setTab("solution");
+      setActionState({
+        echoNum: t?.echoNum ?? "",
+        msg: "바뀐 처리내역이 없습니다. 처리결과 탭에서 내용을 고친 뒤 저장하세요.",
+      });
+      return;
+    }
+    await withBusy("save", () => runAction("save", { solution: draft }));
   };
 
-  const postComment = async () => {
-    setBusy("comment");
-    await runAction("comment", {
-      comment: {
-        body: comment.html,
-        adminOnly: comment.internalOnly,
-        // 댓글과 첨부는 한 요청·한 트랜잭션이다 (ADR-0008)
-        attachments: await toAttachmentPayload(comment.files),
-      },
+  const postComment = () =>
+    withBusy("comment", async () => {
+      if (!t) return;
+      // 입력창이 이 조합을 잠그지만, 상태가 어긋나도 파일을 조용히 버리거나 새게 두지 않는다
+      if (comment.internalOnly && comment.files.length) {
+        setActionState({
+          echoNum: t.echoNum,
+          msg: "내부 전용 댓글에는 파일을 붙일 수 없습니다. 파일을 빼거나 내부 전용을 해제해 주세요.",
+        });
+        return;
+      }
+      let attachments: Awaited<ReturnType<typeof toAttachmentPayload>>;
+      try {
+        attachments = await toAttachmentPayload(comment.files);
+      } catch (e) {
+        // 고른 뒤 디스크에서 옮겨진 파일 등 — 읽지 못한 사실을 그대로 말한다
+        console.error("[첨부 읽기 실패]", e);
+        setActionState({
+          echoNum: t.echoNum,
+          msg: "첨부 파일을 읽지 못했습니다. 파일을 뺐다가 다시 골라 주세요.",
+        });
+        return;
+      }
+      await runAction("comment", {
+        comment: {
+          body: comment.html,
+          adminOnly: comment.internalOnly,
+          // 댓글과 첨부는 한 요청·한 트랜잭션이다 (ADR-0008)
+          attachments,
+        },
+      });
     });
-    setBusy(null);
+
+  /** 액션바 버튼 → 무엇을 할지. 입력이 필요한 액션은 바로 실행하지 않는다 */
+  const onAction = (action: TicketAction) => {
+    // 접수는 분류를 확정하는 단계다 — 바로 실행하지 않고 폼을 연다
+    if (action === "receive") return openTriage();
+    if (action === "propose") return void propose();
+    if (action === "save") return void saveSolution();
+    if (action === "complete") return void complete();
+    if (needsConfirm(action)) return openConfirm(action);
+    void withBusy("action", () => runAction(action));
   };
+
+  /* ── 상단 안내 — 판정은 DetailFlow 의 순수 함수 ── */
+  const suggestion = t
+    ? cancelSuggestionFor(t.comments, data?.actions ?? [])
+    : null;
+  const nextStep = t
+    ? customerNextStep({
+        progress: t.progress,
+        viewerRole: data?.viewer?.role,
+        canComment: !!data?.can.comment,
+        actionCount: data?.actions.length ?? 0,
+      })
+    : null;
+  const history = t ? historyItems(t, data?.config) : null;
+  const historyNotice = history
+    ? hiddenStageNotice(history.hiddenStages)
+    : null;
 
   return (
     <Sheet
@@ -404,19 +651,30 @@ export function DetailSheet({
                         key={a.action}
                         type="button"
                         className={cn("btn", VARIANT[a.variant])}
-                        onClick={() =>
-                          // 접수는 분류를 확정하는 단계다 — 바로 실행하지 않고 폼을 연다
-                          a.action === "receive"
-                            ? openTriage()
-                            : a.action === "propose"
-                              ? propose()
-                              : runAction(a.action)
-                        }
+                        onClick={() => onAction(a.action)}
+                        // 처리 중에 두 번 누르지 않게 — 댓글 등록은 다른 칸이라 막지 않는다
+                        disabled={!!busy}
                       >
                         {a.label}
                       </button>
                     ),
                   )
+                ) : nextStep === "confirmSolution" ? (
+                  // 고객에게 4단계 액션은 없다(완료는 담당자) — 대신 다음 행동을 알려 준다
+                  <span className="flex flex-wrap items-center justify-end gap-2">
+                    <span className="text-11 text-fg-muted">
+                      처리결과를 확인하셨다면 댓글로 알려 주세요 — 담당자가 완료
+                      처리합니다.
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => askInComment(CONFIRM_SOLUTION_COMMENT)}
+                    >
+                      <MessageSquare size={12} aria-hidden />
+                      확인 댓글 쓰기
+                    </button>
+                  </span>
                 ) : (
                   <span className="text-11 text-fg-subtle">
                     {isTerminal(t.progress)
@@ -444,12 +702,24 @@ export function DetailSheet({
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="border-line-subtle border-b px-5 py-4">
-            <Stepper
-              progress={t.progress}
-              usesTestStage={data?.config?.usesTestStage}
-              usesSystemStage={data?.config?.usesSystemStage}
-            />
+            {/* 고객사 플래그가 아니라 이 건이 실제로 거친(또는 머문) 확장 단계만 (UX-10) */}
+            <Stepper progress={t.progress} {...extendedStagesOf(t)} />
           </div>
+
+          {suggestion ? (
+            <div className="px-5 pt-4">
+              <CancelSuggestionCard
+                suggestion={suggestion}
+                onCancel={() => openConfirm(suggestion.exec)}
+                onReply={
+                  data?.can.comment
+                    ? () => askInComment(DECLINE_CANCEL_COMMENT)
+                    : undefined
+                }
+                disabled={!!busy}
+              />
+            </div>
+          ) : null}
 
           {t.request.isReRequest && t.request.parentEchoNum ? (
             <div className="px-5 pt-4">
@@ -524,34 +794,17 @@ export function DetailSheet({
             </TabPanel>
 
             <TabPanel value="history">
+              {/* 어떤 행을 그릴지는 historyItems 가 정한다 — 안 쓰는 단계를 그리고
+                  "표시하지 않습니다"라고 쓰던 자기모순을 없앴다 */}
               <div className="flex flex-col gap-2.5">
-                <HistoryRow
-                  label="승인"
-                  who={t.history.approver}
-                  at={t.history.approvedAt}
-                />
-                <HistoryRow
-                  label="취소 요청"
-                  who={t.history.cancelReqBy}
-                  at={t.history.cancelReqAt}
-                />
-                <HistoryRow
-                  label="취소"
-                  who={t.history.canceler}
-                  at={t.history.canceledAt}
-                />
-                <HistoryRow label="테스트 요청" at={t.history.testAt} />
-                <HistoryRow
-                  label="테스트 완료"
-                  at={t.history.testCompletedAt}
-                />
-                <HistoryRow label="시스템 이관" at={t.history.systemAt} />
-                <HistoryRow
-                  label="최종 처리"
-                  who={t.history.finalAssignee}
-                  at={t.history.finalSuccDate}
-                />
-                <HistoryRow label="완료" at={t.succDate} />
+                {history?.rows.map((r) => (
+                  <HistoryRow
+                    key={r.key}
+                    label={r.label}
+                    who={r.who}
+                    at={r.at}
+                  />
+                ))}
               </div>
 
               {t.history.memos.length ? (
@@ -564,14 +817,11 @@ export function DetailSheet({
                 </div>
               ) : null}
 
-              {/* 실측 5·6=8건, 7·8=3건. 이 고객사에서 안 쓰는 단계는 아예 그리지 않는다 */}
-              {data?.config &&
-              !data.config.usesTestStage &&
-              !data.config.usesSystemStage ? (
+              {/* 실측 5·6=8건, 7·8=3건. 실제로 감춘 단계가 있을 때만 그 사실을 말한다 */}
+              {historyNotice ? (
                 <p className="text-11 text-fg-subtle mt-4 flex items-start gap-1.5 leading-relaxed">
-                  <Info size={12} className="mt-0.5 shrink-0" aria-hidden />이
-                  고객사는 테스트· 시스템 이관 단계를 사용하지 않습니다. 해당
-                  단계는 표시되지 않습니다.
+                  <Info size={12} className="mt-0.5 shrink-0" aria-hidden />
+                  {historyNotice}
                 </p>
               ) : null}
             </TabPanel>
@@ -581,7 +831,9 @@ export function DetailSheet({
               상태 4 이상이면 기본 탭이 '처리결과'라, 댓글 탭 안에만 두면
               사용자가 "쓸 곳이 없다"고 느낀다 (재설계 §2). */}
           <Composer
-            key={t.echoNum}
+            // 등록에 성공하면 새로 만든다 — 비운 입력창에서 '실행 취소'로 방금 보낸 글이
+            // 되살아나 다시 등록되지 않게, 편집기의 실행 취소 이력까지 비운다(리뷰 재현)
+            key={`${t.echoNum}:${commentSent}`}
             value={comment.html}
             onChange={(html) =>
               setCommentState({ ...comment, echoNum: t.echoNum, html })
@@ -591,7 +843,7 @@ export function DetailSheet({
               setCommentState({ ...comment, echoNum: t.echoNum, files })
             }
             onSubmit={postComment}
-            sending={busy === "comment"}
+            sending={commentSending}
             disabled={!data?.can.comment}
             disabledReason={
               isTerminal(t.progress)
@@ -599,6 +851,7 @@ export function DetailSheet({
                 : "이 요청에 댓글을 남길 권한이 없습니다."
             }
             canPostInternal={data?.can.postInternalComment ?? false}
+            focusKey={focusKey}
             internalOnly={comment.internalOnly}
             onInternalOnlyChange={(v) =>
               setCommentState({
@@ -694,6 +947,18 @@ export function DetailSheet({
           </div>
         ) : null}
       </Modal>
+
+      <ConfirmActionModal
+        action={confirm?.action ?? null}
+        reason={confirm?.reason ?? ""}
+        onReasonChange={(v) =>
+          confirm && setConfirmState({ ...confirm, reason: v })
+        }
+        onConfirm={submitConfirm}
+        onClose={() => setConfirmState(null)}
+        busy={busy === "confirm"}
+        message={actionMsg}
+      />
     </Sheet>
   );
 }

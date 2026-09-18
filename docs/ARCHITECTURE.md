@@ -1,6 +1,6 @@
 # ARCHITECTURE
 
-> 골격 문서. 확정된 구조만 적는다. **코드가 아직 없는 부분은 `⬜ P5 예정`** 으로 표시.
+> 현재 코드 기준의 구조 문서. 확정된 구조만 적는다 — 코드와 어긋나면 코드가 맞고 이 문서를 고친다.
 
 ## 1. 계층 (`decisions/ADR-0004` — 사이드 프로젝트 전환)
 
@@ -10,12 +10,17 @@
     │  클라이언트 상호작용만 route handler 경유
     ▼
 src/lib/data/*   ← 🔴 원본 테이블·컬럼명이 갇히는 경계
-    │  select() 가 SELECT/WITH 이외 구문을 거부 (read-only 강제)
+    │  select() = SELECT/WITH 만 · write() = INSERT/UPDATE 만, 넘긴 구문 전체를 한 트랜잭션 (ADR-0006)
     ▼
-SQLite (better-sqlite3) + 가상 시드 (src/lib/dev-seed/)
-    · 로컬: .data/nexio.db — 첫 접속 때 자동 생성, npm run db:reset 로 재생성
-    · 서버리스(Vercel): :memory: — 콜드스타트마다 즉석 시드, 환경변수 0개
+SQLite 호환 저장소 + 가상 시드 (src/lib/dev-seed/) — 쿼리는 한 줄도 다르지 않다
+    · 로컬           : .data/nexio.db (better-sqlite3) — 첫 접속 때 자동 생성, npm run db:reset 로 재생성
+    · 라이브(Vercel) : 공유 DB (libSQL · TURSO_DATABASE_URL) — 인스턴스가 여럿이어도 같은 데이터 (ADR-0009)
+    · 서버리스 + 공유 DB 없음 : :memory: — 콜드스타트마다 즉석 시드, 쓰기 잠금(202)
 ```
+
+쓰기 허용 여부는 **저장소가 정한다** — 로컬 파일 = 허용 · 서버리스 메모리 = 잠금 · 공유 DB = 허용.
+`ALLOW_DEV_WRITES` 를 주면 그 값이 이긴다 (`src/lib/db.ts` `devWritesAllowed()`).
+⚠️ 공유 DB 는 코드처럼 push 로 따라오지 않는다 — 시드에 마스터·표를 더하면 `npm run db:sync:remote` 로 얹는다.
 
 **DB 를 갈아탈 때 교체 대상은 `src/lib/db.ts` 하나다.** 화면은 정규화된 타입만 보므로
 그 아래가 SQLite 든 Postgres 든 알지 못한다.
@@ -30,18 +35,23 @@ SQLite (better-sqlite3) + 가상 시드 (src/lib/dev-seed/)
 |---|---|---|
 | `src/app/dashboard/` | 대시보드 — 3구역·위젯 10종 | 완료 |
 | `src/app/requests/` | 조회(목록+상세 Sheet) · 신청(`new/`) | 완료 (쓰기 포함 — ADR-0006) |
+| `src/app/board/` | 업무 현황 칸반 — 카드 이동이 조회와 **같은 액션 라우트**를 쓴다 · 업무 등록(대리 등록·정기 업무) | 완료 (ADR-0007 · ADR-0011) |
+| `src/app/notices/` | 공지 목록 · 상세(`[id]/`) | 완료 (ADR-0007) |
+| `src/app/customers/` | 고객사 관리 — 등록·비활성, 운영팀 전용 | 완료 (ADR-0010) |
 | `src/app/styleguide/` | 살아있는 스타일가이드 | 완료 |
-| `src/app/api/` | route handler — session · tickets · action · requests · customers · attachments · notifications · diag | 완료. 권한을 **집행하는** 지점 (`.claude/rules/bff.md`) |
+| `src/app/{not-found,error,global-error}.tsx` | 경계 화면 — 없는 주소·페이지 예외(레이아웃 안쪽, 사이드바 유지)·루트 레이아웃 예외. 한국어 · 복귀 링크 · 오류 digest | 완료 |
+| `src/app/api/` | route handler — session · tickets(+action · attachments) · requests · customers · notifications · tasks(+templates · templates/run) · diag | 완료. 권한을 **집행하는** 지점 (`.claude/rules/bff.md`) |
 | `src/app/{globals,tokens}.css` | 토큰 + LAYER 2 컴포넌트 클래스 | 완료 |
+| `public/og.png` | 링크 미리보기 이미지 (1200×630, 대시보드 스크린샷 — 가상 데이터). 메타데이터는 `src/app/layout.tsx` | 완료 |
 | `src/components/ui/` | 프리미티브 12종 (Radix + 토큰) | 완료 |
-| `src/components/{requests,dashboard,layout}/` | 화면 컴포넌트 | 완료 |
-| `src/lib/data/` | 🔴 원본 컬럼명이 갇히는 경계 (tickets·dashboard·meta·mutations·read-state·attachments·customers) | 완료 |
-| `src/lib/dev-seed/` | 데모 스키마 + 가상 시드 생성기 (전부 창작 데이터) | 완료 |
+| `src/components/{requests,dashboard,board,customers,layout}/` | 화면 컴포넌트 (`layout/` = 사이드바·상단바·모바일 서랍·알림 종) | 완료 |
+| `src/lib/data/` | 🔴 원본 컬럼명이 갇히는 경계 (tickets·dashboard·meta·mutations·read-state·attachments·customers·notices·notifications·tasks·request-body) | 완료 |
+| `src/lib/dev-seed/` | 데모 스키마 + 가상 시드 생성기 (전부 창작 데이터) · 데모 시계(`clock.ts` — 시드를 달력에 맞춰 **민다**, ADR-0012) | 완료 |
 | `src/lib/` | 코드표·타입·zod·`canDo()`·새니타이즈·포맷·db·session | 완료 |
-| `tests/` | 권한 fail-closed + 데이터 위생 + 쓰기 원자성 + **라우트 핸들러** + 렌더 스모크 | 162개 통과 |
+| `tests/` | 권한 fail-closed + 데이터 위생 + 쓰기 원자성 + **라우트 핸들러** + 렌더 스모크 | 366개 통과 |
 | `docs/inventory/` | 원본 분석 (API 맵·VO 스키마·실데이터 프로파일) | 완료 |
 | `docs/design/` | 설계 (UX·재설계·권한·타입·BFF·디자인시스템) | 완료 |
-| `docs/decisions/` | ADR — "왜 이렇게 했나" | ADR-0001~0010 |
+| `docs/decisions/` | ADR — "왜 이렇게 했나" | ADR-0001~0012 |
 | `docs/progress/` | 작업 진행 상태 = 세션 재개 지점 | 진행 중 |
 | `.dev/` | AI 스크래치 (진실 아님, 참조 금지) | — |
 
@@ -69,20 +79,20 @@ TURSO_AUTH_TOKEN=…             # 위와 짝. 하나만 있으면 원격이 401
 | 프레임워크 | Next.js 16 (App Router) · React 19 | |
 | 언어 | TypeScript (strict) | |
 | 스타일 | Tailwind 4 + 자체 토큰 + Radix 프리미티브 | shadcn/ui CLI 미사용 — `decisions/ADR-0003` |
-| 테스트 | vitest 4 + jsdom + Testing Library | 162개 (라우트 테스트는 node 환경) |
+| 테스트 | vitest 4 + jsdom + Testing Library | 366개 (라우트 테스트는 node 환경) |
 | 린트·포맷 | ESLint 9 (flat) + prettier | prettier 는 코드만 (문서 제외) |
 | 표·정렬 | `@tanstack/react-table` | 클라이언트 정렬 |
 | 폼 | `react-hook-form` + `zod` | 스키마를 폼·응답 검증에 공유 |
 | 차트 | `recharts` | 색을 `var()` 로 넘겨 다크모드 대응 |
 | XSS | `xss` (DOM 비의존 파서) | `SafeHtml` 브랜드 타입으로 강제. ⚠️ DOMPurify+jsdom 은 서버리스에서 SSR 을 죽인다 (ADR-0005) |
 | DB | `better-sqlite3` · `@libsql/client` | 로컬은 파일, 라이브는 공유 DB. 쿼리는 한 줄도 다르지 않다 (ADR-0004·0009) |
-| CI | GitHub Actions | verify → format:check → build → **런타임 스모크** (`.github/workflows/ci.yml`) |
+| CI | GitHub Actions | verify → format:check → build → **런타임 스모크** → **반응형 검사**(390·768·1440, 브라우저는 CI 에서만 받는다) (`.github/workflows/ci.yml`) |
 
 **아직 도입하지 않은 것**: `nuqs`, `sonner`, `cmdk`. 선정 근거는 `design/tech-stack.md` 에
 있고, 실제 설치는 쓰는 시점에 한다 — 안 쓰는 의존성을 `package.json` 에 미리 쌓지 않는다.
 (`@tiptap/react` 는 댓글·처리내역 편집을 만들면서 실제로 도입했다.)
 
-## 5. 데이터 흐름에서 반드시 지킬 3가지
+## 5. 데이터 흐름에서 반드시 지킬 4가지
 
 1. **원본 컬럼명은 `src/lib/data/` 경계를 넘지 않는다** — `CONTENT`·`ECHONUM`·`PUBLICYN` 변환은 한 곳에서만
 2. **zod 스키마 하나를 폼 검증과 라우트 입력 검증에 함께 쓴다**
@@ -98,6 +108,7 @@ npm run verify
 
 빌드 산출물이 있으면 `npm run smoke` 로 **앱을 실제로 띄워** 확인한다 —
 타입·테스트·빌드를 다 통과하고도 화면만 깨진 사고가 세 번 있었다 (ADR-0005).
+좁은 화면은 `npm run responsive`(390·768·1440, 가로 넘침·골격 전환)로 잰다 — 로컬은 브라우저가 따로 필요하다.
 
 ## 7. 방문 통계 (Vercel Web Analytics)
 

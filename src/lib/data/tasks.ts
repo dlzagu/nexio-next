@@ -1,6 +1,6 @@
 import { labelOf, MODULE, PRIORITY } from "../codes";
 import { select, type Param, type WriteStatement } from "../db";
-import { toDbStamp, todaySeoul } from "../format";
+import { todaySeoul } from "../format";
 import { sanitize } from "../sanitize";
 import { toParagraphs } from "./request-body";
 import type { TaskIntakeParsed } from "../schemas";

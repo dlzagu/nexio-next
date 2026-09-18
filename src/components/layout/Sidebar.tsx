@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { USER_ROLE_LABEL } from "@/lib/codes";
 import type { User } from "@/lib/types";
+import { newRequestBlockedReason } from "./request-gate";
 
 const NAV = [
   { href: "/dashboard", label: "대시보드", icon: LayoutDashboard },
@@ -43,6 +44,12 @@ export function SidebarBody({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  /**
+   * 역할상 쓸 수 없는 메뉴는 숨기지 않고 비활성 + 이유 (외부업체의 '서비스 신청').
+   * 열어 두면 폼을 다 채운 뒤에야 막히고, 숨기면 "메뉴가 왜 없지"가 남는다.
+   */
+  const blockedOf = (href: string) =>
+    href === "/requests/new" ? newRequestBlockedReason(user) : null;
 
   return (
     <>
@@ -71,6 +78,23 @@ export function SidebarBody({
       >
         {[...NAV, ...(user.role === "INTERNAL" ? INTERNAL_NAV : [])].map(
           ({ href, label, icon: Icon }) => {
+            const blocked = blockedOf(href);
+            if (blocked) {
+              return (
+                <span
+                  key={href}
+                  className="nav-i cursor-not-allowed"
+                  aria-disabled="true"
+                  title={blocked}
+                >
+                  {/* .nav-i 의 색은 레이어 밖 CSS 라 유틸리티가 못 이긴다 → 안쪽 요소에 칠한다 */}
+                  <Icon size={15} aria-hidden className="text-fg-disabled" />
+                  <span className="text-fg-disabled flex-1">{label}</span>
+                  <span className="badge badge-neutral">불가</span>
+                  <span className="sr-only"> — {blocked}</span>
+                </span>
+              );
+            }
             const active =
               href === "/requests"
                 ? pathname === "/requests"

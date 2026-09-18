@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { CalendarClock, Plus, Repeat2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type FieldErrors } from "react-hook-form";
 import { Badge } from "@/components/ui/Badge";
 import { Combobox } from "@/components/ui/Combobox";
 import { Notice } from "@/components/ui/EmptyState";
@@ -17,6 +17,7 @@ import type { Option } from "@/lib/data/meta";
 import type { TaskTemplate } from "@/lib/data/tasks";
 import {
   TASK_REQUIRED_ORDER,
+  TEXT_LIMITS,
   taskIntakeSchema,
   type TaskIntakeForm,
 } from "@/lib/schemas";
@@ -97,9 +98,14 @@ export function TaskSheet({
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("new");
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ text: string; failed: boolean } | null>(
-    null,
-  );
+  const [msg, setMsg] = useState<{
+    text: string;
+    failed: boolean;
+    /** 방금 내린 정기 업무 — 안내 옆에 '되돌리기'를 붙인다 */
+    undo?: TaskTemplate;
+  } | null>(null);
+  /** '내리기'를 한 번 더 확인 중인 템플릿. 1클릭으로 내리면 다음 달이 조용히 빈다 */
+  const [confirmDrop, setConfirmDrop] = useState<number | null>(null);
 
   const {
     register,
@@ -111,6 +117,8 @@ export function TaskSheet({
   } = useForm<TaskIntakeForm>({
     resolver: zodResolver(taskIntakeSchema),
     mode: "onBlur",
+    // 포커스는 onInvalid 한 곳이 정한다 — RHF 기본값은 onInvalid 뒤에 제목 칸으로 다시 옮긴다
+    shouldFocusError: false,
     defaultValues: {
       kind: "phone",
       custCode: "",
@@ -206,6 +214,21 @@ export function TaskSheet({
     });
   };
 
+  /**
+   * 첫 제출 실패에 첫 오류 칸으로 스크롤·포커스. 고객사·시스템은 register 없는 콤보박스라
+   * RHF 기본 포커스는 그 아래 제목 칸으로 가 버린다 — 정작 비어 있는 칸은 화면 밖에 남는다.
+   * 🔴 인자로 받은 오류를 쓴다 (바깥 errors 는 렌더 시점 스냅샷이라 첫 제출에 비어 있다).
+   */
+  const onInvalid = (errs: FieldErrors<TaskIntakeForm>) => {
+    const first =
+      TASK_REQUIRED_ORDER.find((k) => errs[k as keyof TaskIntakeForm]) ??
+      Object.keys(errs)[0];
+    if (!first) return;
+    const el = document.getElementById(`f-t-${first}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    el?.focus();
+  };
+
   const runTemplates = async () => {
     const out = await post("/api/tasks/templates/run");
     if (!out) return;
@@ -217,19 +240,27 @@ export function TaskSheet({
     if (res.status === 200) router.refresh();
   };
 
-  const dropTemplate = async (t: TaskTemplate) => {
+  /**
+   * 정기 업무 내리기(active=false) / 되돌리기(active=true).
+   * 목록은 활성만 보여 주므로 내린 건 여기서 사라진다 → 성공 안내 옆에 되돌리기를 붙인다.
+   * 🔴 성공은 200 뿐 — 202(쓰기 잠김)에 되돌리기를 붙이면 내리지도 않은 걸 되살리는 셈이다.
+   */
+  const setTemplateActive = async (t: TaskTemplate, active: boolean) => {
+    setConfirmDrop(null);
     const out = await post(
       "/api/tasks/templates",
-      { id: t.id, active: false },
+      { id: t.id, active },
       "PATCH",
     );
     if (!out) return;
     const { res, data } = out;
+    const ok = res.status === 200;
     setMsg({
       text: data.message ?? `HTTP ${res.status}`,
-      failed: !res.ok && res.status !== 202,
+      failed: !ok && res.status !== 202,
+      undo: ok && !active ? t : undefined,
     });
-    if (res.status === 200) router.refresh();
+    if (ok) router.refresh();
   };
 
   return (
@@ -255,13 +286,27 @@ export function TaskSheet({
     >
       {msg ? (
         <div className="px-5 pt-4">
-          <Notice tone={msg.failed ? "danger" : "info"}>{msg.text}</Notice>
+          <Notice tone={msg.failed ? "danger" : "info"}>
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="flex-1">{msg.text}</span>
+              {msg.undo ? (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-xs"
+                  disabled={busy}
+                  onClick={() => msg.undo && setTemplateActive(msg.undo, true)}
+                >
+                  되돌리기
+                </button>
+              ) : null}
+            </span>
+          </Notice>
         </div>
       ) : null}
 
       {tab === "new" ? (
         <form
-          onSubmit={handleSubmit(onSubmit)}
+          onSubmit={handleSubmit(onSubmit, onInvalid)}
           className="flex flex-col gap-4 p-5"
           noValidate
         >
@@ -394,6 +439,7 @@ export function TaskSheet({
           >
             <textarea
               id="f-t-content"
+              maxLength={TEXT_LIMITS.body}
               className="input min-h-[120px]"
               aria-invalid={errors.content ? "true" : undefined}
               placeholder="무엇을 해야 하는지, 어디까지 확인했는지 적어 주세요."
@@ -474,6 +520,7 @@ export function TaskSheet({
               >
                 <textarea
                   id="f-t-answer"
+                  maxLength={TEXT_LIMITS.body}
                   className="input min-h-[96px]"
                   aria-invalid={errors.answer ? "true" : undefined}
                   placeholder="어떻게 처리했는지 · 고객에게 무엇을 안내했는지"
@@ -618,14 +665,39 @@ export function TaskSheet({
                   >
                     {t.pending ? "이번 달 미생성" : "이번 달 생성됨"}
                   </Badge>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    disabled={busy}
-                    onClick={() => dropTemplate(t)}
-                  >
-                    내리기
-                  </button>
+                  {confirmDrop === t.id ? (
+                    // 한 번 더 묻는다 — 내리면 다음 달부터 이 업무가 만들어지지 않는다
+                    <span className="flex w-full flex-wrap items-center justify-end gap-2">
+                      <span className="text-12 text-warning-text flex-1">
+                        내리면 다음 달부터 이 업무를 만들지 않습니다. 이미 만든
+                        이번 달 건은 그대로 남습니다.
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setConfirmDrop(null)}
+                      >
+                        취소
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-danger-soft btn-sm"
+                        disabled={busy}
+                        onClick={() => setTemplateActive(t, false)}
+                      >
+                        내리기
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      disabled={busy}
+                      onClick={() => setConfirmDrop(t.id)}
+                    >
+                      내리기
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

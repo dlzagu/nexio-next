@@ -1,6 +1,12 @@
-import type { ProgressCode } from "./codes";
+import { isTerminal, type ProgressCode } from "./codes";
 import { canDo } from "./permissions";
-import type { CustomerConfig, TicketAction, TicketRow, User } from "./types";
+import type {
+  CustomerConfig,
+  ListView,
+  TicketAction,
+  TicketRow,
+  User,
+} from "./types";
 
 /**
  * 업무 현황 보드(칸반)의 컬럼과 이동 규칙.
@@ -72,6 +78,137 @@ export function canMove(
   const action = moveAction(ticket.progress, to);
   if (!action) return null;
   return canDo(action, ticket, user, config) ? action : null;
+}
+
+/**
+ * 이동을 실행하는 방법. 권한(canMove)과 **별개의 축**이다 — 할 수 있는 이동이라도
+ * 사람의 입력이 필요하면 보드에서 곧바로 부르지 않는다.
+ *   · api    — 버튼·드롭 한 번으로 끝나는 전이 (접수·승인·완료)
+ *   · detail — 입력이 있어야 하는 전이. 상세를 열어 **쓸 자리**로 데려간다
+ */
+export type BoardMovePlan =
+  | { kind: "api"; action: TicketAction }
+  | {
+      kind: "detail";
+      action: TicketAction;
+      /** 상세에서 먼저 열 탭 (null = 상태별 기본 탭) */
+      tab: "solution" | null;
+      /** 보드 위에 한 줄로 남길 안내 — 왜 이동 대신 상세가 열렸는지 */
+      note: string;
+    };
+
+/**
+ * 🔴 입력이 필요한 전이. 보드는 `{ action }` 만 보내므로 여기 있는 것을 API 로 부르면
+ *    400 문장만 뜨고 카드는 그대로다 (진행 카드 78건 전부 — 답변은 4 부터 채워진다).
+ *    · 해결안 제시 — 답변 필수(전이표 requires). 처리결과 탭에서 쓰고 거기서 누른다
+ *    · 취소요청 판단 — 고객의 요청을 받거나 거절하는 **종결 판단**이라 사유와 확인이 필요하다.
+ *      1클릭으로 거절되면 고객은 이유 없이 취소가 막힌다
+ */
+const NEEDS_INPUT: Partial<
+  Record<TicketAction, { tab: "solution" | null; note: string }>
+> = {
+  propose: {
+    tab: "solution",
+    note: "답변을 쓰고 '해결안 제시'를 누르세요.",
+  },
+  cancelApprove: {
+    tab: null,
+    note: "고객의 취소 요청입니다 — 상세에서 사유와 함께 판단하세요.",
+  },
+  cancelDeny: {
+    tab: null,
+    note: "고객의 취소 요청입니다 — 상세에서 사유와 함께 판단하세요.",
+  },
+};
+
+export function planMove(
+  ticket: TicketRow,
+  to: ProgressCode,
+  user: User,
+  config?: CustomerConfig | null,
+): BoardMovePlan | null {
+  const action = canMove(ticket, to, user, config);
+  if (!action) return null;
+  const input = NEEDS_INPUT[action];
+  return input ? { kind: "detail", action, ...input } : { kind: "api", action };
+}
+
+/**
+ * 카드의 빠른 버튼(키보드·클릭 경로). 드래그와 **같은 판정**을 탄다.
+ * 라벨은 컬럼 이름이 아니라 **누르면 일어나는 일**로 말한다 — 상세가 열리는데
+ * '해결안 제시 ›' 라고 쓰면 이동한 줄 안다. 취소요청(10)은 어느 쪽으로 가든 판단이다.
+ */
+export function quickMove(
+  ticket: TicketRow,
+  user: User,
+  config?: CustomerConfig | null,
+): { to: ProgressCode; label: string; plan: BoardMovePlan } | null {
+  for (const col of BOARD_COLUMNS) {
+    if (col.progress === ticket.progress) continue;
+    const plan = planMove(ticket, col.progress, user, config);
+    if (!plan) continue;
+    const label =
+      plan.kind === "api"
+        ? col.label
+        : plan.action === "propose"
+          ? "해결안 쓰기"
+          : "판단하기";
+    return { to: col.progress, label, plan };
+  }
+  return null;
+}
+
+/**
+ * 서버가 입력 부족으로 이동을 되돌려 보냈을 때 — 같은 버튼을 다시 누르게 두지 않고
+ * 쓸 자리를 연다. (완료 4→9 도 서버가 답변을 요구한다. 보통은 4 에 이미 답변이 있지만
+ * 비어 있는 건이 오면 이 길로 간다)
+ */
+export function planAfterRejection(
+  code: string | undefined,
+): { tab: "solution"; note: string } | null {
+  if (code === "SOLUTION_REQUIRED") {
+    return {
+      tab: "solution",
+      note: "답변(처리내용)이 비어 있어 옮기지 못했습니다 — 처리결과 탭에서 채운 뒤 다시 시도하세요.",
+    };
+  }
+  return null;
+}
+
+/**
+ * 방금 **신청한** 건을 신청한 사람이 어느 목록에서 볼 수 있는가. 못 보면 null.
+ *
+ * `scopeClause`(data/tickets.ts)와 같은 규칙을 화면 쪽에서 되짚는다:
+ *   · 신청자가 나 → '내 요청'(mine)
+ *   · 운영팀 → 전부 보인다. 대리 신청은 신청자도 담당자도 내가 아니라 mine 에 안 걸린다 → open
+ *   · 고객사 → 공개건이거나 내가 승인권자일 때만 보인다
+ *   · 그 밖(외부업체 등) → 배정건만 보이는데 새 신청은 담당이 없다 → 못 본다
+ * 🔴 못 보는 건의 상세를 열면 404 가 뜨고, 사용자는 저장이 실패한 줄 알고 다시 낸다
+ *    (자기도 볼 수 없는 중복 티켓이 쌓인다).
+ */
+export function listViewAfterCreate(
+  created: { requesterId: string; isPublic: boolean; progress: string },
+  user: User,
+): ListView | null {
+  if (created.requesterId && created.requesterId === user.id) return "mine";
+  const visible =
+    user.role === "INTERNAL" ||
+    (user.role === "CUSTOMER" && (user.isApprover || created.isPublic));
+  if (!visible) return null;
+  return isTerminal(created.progress) ? "all" : "open";
+}
+
+/** 신청 저장 후 보낼 주소. 볼 수 없는 건은 상세를 열지 않고 목록에 안내만 남긴다 */
+export function afterCreateHref(
+  echoNum: string,
+  created: { requesterId: string; isPublic: boolean; progress: string },
+  user: User,
+): string {
+  const view = listViewAfterCreate(created, user);
+  const no = encodeURIComponent(echoNum);
+  return view
+    ? `/requests?view=${view}&open=${no}`
+    : `/requests?view=open&created=${no}&notice=private`;
 }
 
 /**

@@ -13,8 +13,10 @@ interface Step {
 }
 
 /**
- * 주 경로 5단계 + 고객사 플래그가 켜진 확장 단계만 그린다.
+ * 주 경로 5단계 + 넘겨받은 확장 단계만 그린다.
  * 실측: 5·6(테스트) 8건, 7·8(시스템이관) 3건 — 상시 렌더하지 않는다.
+ *
+ * ⚠️ 상세 화면은 고객사 플래그가 아니라 `extendedStagesOf(티켓)` 을 넘긴다 — 아래 참조.
  */
 export function flowSteps(opts: {
   usesTestStage?: boolean;
@@ -40,6 +42,34 @@ export function flowSteps(opts: {
   return steps;
 }
 
+/**
+ * 이 티켓에 **실제로 그릴** 확장 단계.
+ *
+ * 🔴 고객사가 테스트·이관 단계를 '쓴다'는 플래그만으로 5~8 칸을 그리면 안 된다 —
+ *    4→5(테스트 요청)·→7(이관 요청)로 가는 액션이 전이표에 없어서, 해결안제시(4) 건의
+ *    스테퍼가 다음 단계로 '테스트요청'을 보여 주는데 담당자의 전진 버튼 '완료 처리'는 곧장
+ *    완료(9)로 간다(실측 UX-10). 도달할 길이 없는 칸은 약속이 아니라 오해다.
+ *    지금 그 단계에 있거나(5~8) 지나간 흔적(일시)이 있을 때만 그린다.
+ */
+export function extendedStagesOf(t: {
+  progress: string;
+  history: {
+    testAt: string | null;
+    testCompletedAt: string | null;
+    systemAt: string | null;
+  };
+}): { usesTestStage: boolean; usesSystemStage: boolean } {
+  const p = String(t.progress).trim();
+  return {
+    usesTestStage:
+      p === "5" ||
+      p === "6" ||
+      !!t.history.testAt ||
+      !!t.history.testCompletedAt,
+    usesSystemStage: p === "7" || p === "8" || !!t.history.systemAt,
+  };
+}
+
 export function Stepper({
   progress,
   usesTestStage,
@@ -51,8 +81,12 @@ export function Stepper({
   usesSystemStage?: boolean;
   className?: string;
 }) {
-  const steps = flowSteps({ usesTestStage, usesSystemStage });
   const p = String(progress).trim();
+  // 현재 단계는 언제나 그린다 — 칸이 없으면 첫 단계가 '현재'로 칠해진다
+  const steps = flowSteps({
+    usesTestStage: usesTestStage || p === "5" || p === "6",
+    usesSystemStage: usesSystemStage || p === "7" || p === "8",
+  });
   const terminatedEarly = p === "11" || p === "12";
   /**
    * 취소요청(10)은 주 경로에 없다. 그대로 두면 어느 단계에도 안 맞아

@@ -7,18 +7,57 @@ import {
 } from "@/lib/data/attachments";
 import {
   applyAction,
-  missingSolutionField,
+  assertActionInput,
+  InternalAttachmentError,
+  ReasonRequiredError,
   SolutionRequiredError,
+  supportsAction,
   UnsupportedActionError,
 } from "@/lib/data/mutations";
 import { getTicket } from "@/lib/data/tickets";
 import { MODULE } from "@/lib/codes";
 import { select } from "@/lib/db";
 import { devWritesAllowed, writeDisabledReason } from "@/lib/db";
+import { seoulWallDate } from "@/lib/format";
 import { actionLabel, canDo } from "@/lib/permissions";
 import { isBlankHtml } from "@/lib/sanitize";
 import { actionSchema } from "@/lib/schemas";
 import { currentUser, loadCustomerConfig } from "@/lib/session";
+import type { TicketAction } from "@/lib/types";
+
+/**
+ * 데이터 계층이 던지는 **입력 오류**를 400 문장으로 바꾼다. 모르는 오류는 null — 삼키지 않고
+ * 호출자가 다시 던진다(500). 쓰기 게이트 앞의 판정과 실행 중의 판정이 같은 표를 쓴다.
+ */
+function inputErrorResponse(e: unknown): NextResponse | null {
+  const code =
+    e instanceof AttachmentError
+      ? "INVALID_ATTACHMENT"
+      : e instanceof InternalAttachmentError
+        ? "INTERNAL_ATTACHMENT"
+        : e instanceof SolutionRequiredError
+          ? "SOLUTION_REQUIRED"
+          : e instanceof ReasonRequiredError
+            ? "REASON_REQUIRED"
+            : e instanceof UnsupportedActionError
+              ? "UNSUPPORTED_ACTION"
+              : null;
+  if (!code) return null;
+  return NextResponse.json(
+    { code, message: (e as Error).message },
+    { status: 400 },
+  );
+}
+
+/** 처리 결과 안내. '완료 처리' + '처리했습니다' 가 '완료 처리 처리했습니다' 가 되지 않게 */
+function doneMessage(action: TicketAction): string {
+  if (action === "save") return "처리내역을 저장했습니다.";
+  if (action === "comment") return "댓글을 등록했습니다.";
+  const label = actionLabel(action);
+  return label.endsWith("처리")
+    ? `${label}했습니다.`
+    : `${label} 처리했습니다.`;
+}
 
 /**
  * 액션 라우트. 클라이언트가 보낸 티켓 상태를 믿지 않고 **서버에서 다시 읽어** 판정한다.
@@ -42,7 +81,12 @@ export async function POST(
   });
   if (!parsed.success) {
     return NextResponse.json(
-      { code: "BAD_REQUEST", detail: parsed.error.issues },
+      {
+        code: "BAD_REQUEST",
+        // 화면은 message 를 그대로 띄운다 — 길이 초과처럼 사용자가 고칠 수 있는 이유를 문장으로
+        message: parsed.error.issues[0]?.message,
+        detail: parsed.error.issues,
+      },
       { status: 400 },
     );
   }
@@ -54,6 +98,12 @@ export async function POST(
   const { action, comment, reason } = parsed.data;
   if (!canDo(action, ticket, user, config)) {
     return NextResponse.json({ code: "FORBIDDEN" }, { status: 403 });
+  }
+
+  // 'reapply' 처럼 상태 전이가 아닌 액션 — 쓰기가 잠겨 있어도 202('통과')로 알리지 않는다.
+  // 재신청은 신청 폼(/api/requests)으로 간다.
+  if (!supportsAction(action)) {
+    return inputErrorResponse(new UnsupportedActionError(action))!;
   }
 
   if (action === "comment" && isBlankHtml(comment?.body)) {
@@ -69,12 +119,8 @@ export async function POST(
   try {
     files = validateUploads(decodeUploads(comment?.attachments ?? []));
   } catch (e) {
-    if (e instanceof AttachmentError) {
-      return NextResponse.json(
-        { code: "INVALID_ATTACHMENT", message: e.message },
-        { status: 400 },
-      );
-    }
+    const res = inputErrorResponse(e);
+    if (res) return res;
     throw e;
   }
 
@@ -146,7 +192,7 @@ export async function POST(
 
     if (t.scheDate.trim()) {
       const v = t.scheDate.trim();
-      const limit = new Date(new Date().getFullYear() + 2, 11, 31);
+      const limit = new Date(seoulWallDate().getFullYear() + 2, 11, 31);
       const d = new Date(v);
       // ⚠️ 모양만 봐서는 안 된다 — '2026-13-40' 은 정규식을 통과하고, 뒤따르는 범위 비교는
       //    Invalid Date 라 **거짓**이 되어 그대로 저장된다 (NaN 비교는 언제나 거짓이다).
@@ -174,18 +220,41 @@ export async function POST(
     parsed.data.solution && canSave ? parsed.data.solution : undefined;
 
   /**
-   * 빈 해결안으로는 넘어갈 수 없다. **쓰기 게이트 앞**에서 본다 —
-   * 쓰기가 꺼져 있어도 무엇을 채워야 하는지는 알려줘야 한다(첨부 검증과 같은 축).
+   * 🔴 저장할 것 없는 '저장'은 성공이 아니다. 예전엔 처리내역 없이 온 save 가 아무것도 안
+   *    바꾸고 200 "저장했습니다"를 돌려줬고, 화면은 그 200 을 믿고 쓰던 초안을 버렸다
+   *    (액션바의 저장 버튼이 초안을 안 실어 보내던 경로 — 실측으로 답변이 사라졌다).
    */
-  const missing = missingSolutionField(action, solution, ticket);
-  if (missing) {
+  if (action === "save" && !solution) {
     return NextResponse.json(
       {
-        code: "SOLUTION_REQUIRED",
-        message: `${missing}을(를) 입력해야 이 단계로 넘어갈 수 있습니다.`,
+        code: "NOTHING_TO_SAVE",
+        message: "저장할 처리내역이 없습니다.",
       },
       { status: 400 },
     );
+  }
+
+  /**
+   * 빈 해결안·빠진 사유·내부 전용 글의 첨부. **쓰기 게이트 앞**에서 본다 —
+   * 쓰기가 꺼져 있어도 무엇을 고쳐야 하는지는 알려줘야 한다(첨부 검증과 같은 축).
+   * 판정 자체는 데이터 계층(assertActionInput)에 있고, applyAction 이 한 번 더 본다.
+   */
+  const commentInput = comment?.body?.trim()
+    ? { ...comment, files }
+    : undefined;
+  try {
+    assertActionInput({
+      ticket,
+      action,
+      solution,
+      reason,
+      // 본문 없이 온 첨부도 내부 전용 판정에서 빠지지 않게 원래 요청을 넘긴다
+      comment: comment ? { adminOnly: comment.adminOnly, files } : undefined,
+    });
+  } catch (e) {
+    const res = inputErrorResponse(e);
+    if (res) return res;
+    throw e;
   }
 
   if (!devWritesAllowed()) {
@@ -206,36 +275,20 @@ export async function POST(
       user,
       action,
       solution,
-      comment: comment?.body?.trim() ? { ...comment, files } : undefined,
+      comment: commentInput,
       triage,
       reason,
     });
     return NextResponse.json({
       code: "OK",
-      message:
-        action === "save"
-          ? "처리내역을 저장했습니다."
-          : action === "comment"
-            ? "댓글을 등록했습니다."
-            : `${actionLabel(action)} 처리했습니다.`,
+      message: doneMessage(action),
       echoNum: parsed.data.echoNum,
       progress: result.progress,
     });
   } catch (e) {
-    // 빈 해결안으로는 넘어갈 수 없다 — 무엇을 채워야 하는지 문장으로 돌려준다
-    if (e instanceof SolutionRequiredError) {
-      return NextResponse.json(
-        { code: "SOLUTION_REQUIRED", message: e.message },
-        { status: 400 },
-      );
-    }
-    if (e instanceof UnsupportedActionError) {
-      // reapply 처럼 상태 전이가 아닌 액션이 여기로 오면 막는다. 재신청은 신청 폼으로 간다.
-      return NextResponse.json(
-        { code: "UNSUPPORTED_ACTION", message: e.message },
-        { status: 400 },
-      );
-    }
+    // 마지막 방어선이 던진 입력 오류 — 무엇을 고쳐야 하는지 문장으로 돌려준다
+    const res = inputErrorResponse(e);
+    if (res) return res;
     throw e;
   }
 }
